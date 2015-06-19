@@ -1,11 +1,64 @@
 #!/usr/bin/perl
 
 ###
-### ⛈ TVRain downloader
+###	⛈	optimistiCli: TVRain.ru command line client intended to provide legitimate paying users access to the video archive.
 ###
 
 use utf8;
 use strict;
+
+our $usage = 'Usage:
+  get_tvrain [-h] [-v] [-F] [-c <merge|save|pls>] [-q <hd|sd|lo>] 
+             [-d <output dir>] [-o <output file name>] [-t <temp dir>] 
+             [-i] [-y] [-C <config file>] <Video ID | Page with video URL>
+
+TVRain.ru command line client intended to provide access to the video archive 
+for registered paying users.
+
+Typical use:
+  get_tvrain http://tvrain.ru/teleshow/reportazh/the_rain_is_falling-123456/
+
+If all goes well this will resut with the "Дождь идет.mkv" file in the 
+current directory,
+
+Options:
+  -h Show useage and exit
+  -v Verbose output, prints a lot of debugging stuff to STDERR
+  -F Force first run, resets all options, requires device linking
+  -c Command, instructs get_tvrain what to do:
+       merge - downloads all parts of the video and merges them into one 
+               matroska file, requires temp directory for downloaded parts,
+               this is the default vommand
+       save  - saves each part of the video as is
+       pls   - does not download any video, saves a playlist with video URLs
+  -q Video quality selector, available options are:
+       hd - high definition aka 720p (default)
+       sd - standard definition aka 480p
+       lo - low bitrate aka 360p
+  -d Write output file(s) to the specified directory, defaults to current 
+     directory
+  -o Set output file(s) name, if ommited the article / feature name is used 
+     to compose the file name(s); overrides -d and -i
+  -t Use specified directory to temporarely store downloaded video parts for
+     the "merge" command, if ommited looks up temp_dir in the configuration
+     file, which defaults to the current directory
+  -i Use video ID for the file(s) name
+  -y Override output file(s) in case of naming conflict, if not specified 
+     file name(s) will be changed to avoid overwriting
+  -C Use specified configuration faile instaed of the default one
+
+Configuration file:
+  // TODO: Explain where it is, what its format is, how is it created
+
+First run:
+  // TODO: Explain what happens on the first run, how to re-run it
+
+Linking:
+  // TODO: Explain what device linking is, when it happens, how to re-run it
+
+Examples:
+  // TODO: Provide a few typical use cases
+';
 
 use open IO  => ":encoding(utf8)";
 binmode STDOUT, ":utf8";
@@ -25,7 +78,7 @@ use Getopt::Long qw(:config no_ignore_case require_order bundling);
 ### Constants
 
 our $CONFIG_FILE_NAME = '.get_tvrain.conf';
-our $DEVICE_NAME = 'JaneErye Client'; #'Optimistic Client';
+our $DEVICE_NAME = 'JaneErye Client'; #'optimistiCli';
 our $URL_BASE = 'https://api.tvrain.ru/api_v2';
 our $API_CONSUMER_KEY = 'a908545f-80af-4f99-8dac-fb012cec';
 our $API_VERSION = '2.13';
@@ -199,31 +252,16 @@ sub call_api {
 	);
 
 	debug 'request', $request->as_string if $options->{'verbose'};
-#	print STDERR 
-#		"============ REQEST START ============\n", 
-#		$request->as_string, 
-#		"\n============= REQEST END =============\n\n" 
-#			if $options->{'verbose'};
 
 	my $response = $user_agent->request($request);
 
 	if ($response->is_success) {
 		debug 'response', $response->content if $options->{'verbose'};
-#		print STDERR 
-#			"============ RSPONSE START ============\n", 
-#			$response->content, 
-#			"\n============= RSPONSE END =============\n\n" 
-#				if $options->{'verbose'};
 
 		return decode_json $response->content;
 	} else {
 		if (defined $api_request->{'error_overrides'}->{$response->code}) {
 			debug 'response', 'Executing error override for HTTP return code ' . $response->code if $options->{'verbose'};
-#			print STDERR 
-#				"============ RSPONSE START ============\nExecuting error override for HTTP return code ", 
-#				$response->code, 
-#				"\n============= RSPONSE END =============\n\n" 
-#					if $options->{'verbose'};
 
 			return $api_request->{'error_overrides'}->{$response->code};
 		} else {
@@ -252,11 +290,6 @@ if ($video_id =~ /^\d+$/) {
 }
 
 debug 'video id', $video_id if $options->{'verbose'};
-#print STDERR 
-#	"============ VIDEO ID START ============\n", 
-#	$video_id, 
-#	"\n============= VIDEO ID END =============\n\n" 
-#		if $options->{'verbose'};
 
 
 ### Read system config and init it if needed
