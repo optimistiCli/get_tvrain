@@ -55,6 +55,14 @@ $options = {
 
 ### Functions
 
+sub debug {
+	my $title = shift;
+	my $text = shift;
+	
+	$title = uc $title;
+	print STDERR "============ $title START ============\n$text\n============= $title END =============\n\n";
+}
+
 sub cook_rand_xxxx {
 	sprintf "%04X", int rand 0x10000;
 }
@@ -167,6 +175,7 @@ sub cook_auth {
 sub call_api {
 	my $api_request = shift;
 
+	# TODO: Try implementing via $user_agent->default_headers
 	my $headers = HTTP::Headers->new(
 		'X-User-Agent'									=> "$DEVICE_NAME; API_CONSUMER_KEY=$API_CONSUMER_KEY",
 		'Accept'												=> "application/tvrain.api.$API_VERSION+json",
@@ -189,29 +198,32 @@ sub call_api {
 		$encoded_params
 	);
 
-	print STDERR 
-		"============ REQEST START ============\n", 
-		$request->as_string, 
-		"\n============= REQEST END =============\n\n" 
-			if $options->{'verbose'};
+	debug 'request', $request->as_string if $options->{'verbose'};
+#	print STDERR 
+#		"============ REQEST START ============\n", 
+#		$request->as_string, 
+#		"\n============= REQEST END =============\n\n" 
+#			if $options->{'verbose'};
 
 	my $response = $user_agent->request($request);
 
 	if ($response->is_success) {
-		print STDERR 
-			"============ RSPONSE START ============\n", 
-			$response->content, 
-			"\n============= RSPONSE END =============\n\n" 
-				if $options->{'verbose'};
+		debug 'response', $response->content if $options->{'verbose'};
+#		print STDERR 
+#			"============ RSPONSE START ============\n", 
+#			$response->content, 
+#			"\n============= RSPONSE END =============\n\n" 
+#				if $options->{'verbose'};
 
 		return decode_json $response->content;
 	} else {
 		if (defined $api_request->{'error_overrides'}->{$response->code}) {
-			print STDERR 
-				"============ RSPONSE START ============\nExecuting error override for HTTP return code ", 
-				$response->code, 
-				"\n============= RSPONSE END =============\n\n" 
-					if $options->{'verbose'};
+			debug 'response', 'Executing error override for HTTP return code ' . $response->code if $options->{'verbose'};
+#			print STDERR 
+#				"============ RSPONSE START ============\nExecuting error override for HTTP return code ", 
+#				$response->code, 
+#				"\n============= RSPONSE END =============\n\n" 
+#					if $options->{'verbose'};
 
 			return $api_request->{'error_overrides'}->{$response->code};
 		} else {
@@ -239,11 +251,12 @@ if ($video_id =~ /^\d+$/) {
 	# TODO: Print proper error message and usage
 }
 
-print STDERR 
-	"============ VIDEO ID START ============\n", 
-	$video_id, 
-	"\n============= VIDEO ID END =============\n\n" 
-		if $options->{'verbose'};
+debug 'video id', $video_id if $options->{'verbose'};
+#print STDERR 
+#	"============ VIDEO ID START ============\n", 
+#	$video_id, 
+#	"\n============= VIDEO ID END =============\n\n" 
+#		if $options->{'verbose'};
 
 
 ### Read system config and init it if needed
