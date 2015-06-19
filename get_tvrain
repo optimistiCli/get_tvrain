@@ -19,7 +19,7 @@ Typical use:
   get_tvrain http://tvrain.ru/teleshow/reportazh/the_rain_is_falling-123456/
 
 If all goes well this will resut with the "Дождь идет.mkv" file in the 
-current directory,
+current directory,	
 
 Options:
   -h Show useage and exit
