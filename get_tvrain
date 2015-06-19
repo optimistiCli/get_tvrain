@@ -1,0 +1,312 @@
+#!/usr/bin/perl
+
+###
+### ⛈ TVRain downloader
+###
+
+use utf8;
+use strict;
+
+use open IO  => ":encoding(utf8)";
+binmode STDOUT, ":utf8";
+binmode STDERR, ":utf8";
+
+use Env qw(HOME);
+use Config::Tiny;
+use HTTP::Headers;
+use HTTP::Request;
+use CGI::Utils;
+use LWP::UserAgent;
+use JSON;
+use MIME::Base64 qw(encode_base64);
+use Getopt::Long qw(:config no_ignore_case require_order bundling);
+
+
+### Constants
+
+our $CONFIG_FILE_NAME = '.get_tvrain.conf';
+our $DEVICE_NAME = 'JaneErye Client'; #'Optimistic Client';
+our $URL_BASE = 'https://api.tvrain.ru/api_v2';
+our $API_CONSUMER_KEY = 'a908545f-80af-4f99-8dac-fb012cec';
+our $API_VERSION = '2.13';
+our $LINK_POLL_TIMEOUT_SEC=15;
+
+
+### Globals
+
+our $config;
+our $config_file_path;
+our $cgi_utils;
+our $user_agent;
+our $me;
+our $options;
+our $video_id;
+
+### Init
+
+$config_file_path = "$HOME/$CONFIG_FILE_NAME";
+$cgi_utils = CGI::Utils->new;
+$user_agent = LWP::UserAgent->new;
+
+# Set options defaults
+$options = {
+	'verbose'	=> 0,
+};
+
+### Functions
+
+sub cook_rand_xxxx {
+	sprintf "%04X", int rand 0x10000;
+}
+
+sub cook_device_uid {
+	&cook_rand_xxxx . '-' . 
+	&cook_rand_xxxx . '-' . 
+	&cook_rand_xxxx . '-' . 
+	&cook_rand_xxxx . '-' . 
+	&cook_rand_xxxx . '-' . 
+	&cook_rand_xxxx . '-' . 
+	&cook_rand_xxxx . '-' . 
+	&cook_rand_xxxx;
+}
+
+sub cook_quickauth_request {
+	{
+		'name'					=> 'quickauth',
+		'method'				=> 'POST',
+		'url'						=> "$URL_BASE/user/quickauth/",
+		'post_params'		=> {
+			'device_uid'		=> $config->{_}->{'device_uid'},
+		},
+		'extra_headers'	=> {
+		},
+		'error_overrides'	=> {
+		},
+	}
+}
+
+sub cook_startlinking_request {
+	{
+		'name'					=> 'startlinking',
+		'method'				=> 'POST',
+		'url'						=> "$URL_BASE/user/startlinking/",
+		'post_params'		=> {
+		},
+		'extra_headers'	=> {
+		},
+		'error_overrides'	=> {
+		},
+	}
+}
+
+sub cook_link_request {
+	my $oid = shift;
+
+	{
+		'name'						=> 'link',
+		'method'					=> 'POST',
+		'url'							=> "$URL_BASE/user/link/",
+		'post_params'			=> {
+			'device_uid'			=> $config->{_}->{'device_uid'},
+			'oid'							=> $oid,
+		},
+		'extra_headers'		=> {
+		},
+		'error_overrides'	=> {
+			'401'							=> {
+				'error'						=> '401 Unauthorized',
+			}
+		},
+	}
+}
+
+sub cook_me_request {
+	{
+		'name'						=> 'me',
+		'method'					=> 'GET',
+		'url'							=> "$URL_BASE/user/me/",
+		'post_params'			=> {
+		},
+		'extra_headers'		=> {
+		},
+		'error_overrides'	=> {
+		},
+	}
+}
+
+sub cook_videos_request {
+	my $video_id = shift;
+
+	{
+		'name'						=> 'videos',
+		'method'					=> 'GET',
+		'url'							=> "$URL_BASE/articles/$video_id/videos/",
+		'post_params'			=> {
+		},
+		'extra_headers'		=> {
+		},
+		'error_overrides'	=> {
+			'404'							=> {
+				'error'						=> '404 Not Found',
+			}
+		},
+	}
+}
+
+sub write_config {
+	$config->write($config_file_path, 'utf8') or die "Error writing config " . $config->errstr();
+}
+
+sub cook_auth {
+	my $user_id = shift;
+	my $device_token = shift;
+
+	'Basic ' . encode_base64 "$user_id:$device_token", '';
+}
+
+sub call_api {
+	my $api_request = shift;
+
+	my $headers = HTTP::Headers->new(
+		'X-User-Agent'									=> "$DEVICE_NAME; API_CONSUMER_KEY=$API_CONSUMER_KEY",
+		'Accept'												=> "application/tvrain.api.$API_VERSION+json",
+		'Content-Type'									=> 'application/x-www-form-urlencoded',
+	);
+
+	my $encoded_params = $cgi_utils->url_encode_vars($api_request->{'post_params'}, '&') if keys %{$api_request->{'post_params'}};
+	$api_request->{'extra_headers'}->{'Content-Length'} = length $encoded_params if $encoded_params;
+
+	foreach my $key (keys %{$api_request->{'extra_headers'}}) {
+		$headers->push_header($key => $api_request->{'extra_headers'}->{$key});
+	}
+
+	$headers->push_header('Authorization' => $config->{_}->{'auth'}) if defined $config->{_}->{'auth'};
+
+	my $request = HTTP::Request->new(
+		$api_request->{'method'},
+		$api_request->{'url'},
+		$headers,
+		$encoded_params
+	);
+
+	print STDERR 
+		"============ REQEST START ============\n", 
+		$request->as_string, 
+		"\n============= REQEST END =============\n\n" 
+			if $options->{'verbose'};
+
+	my $response = $user_agent->request($request);
+
+	if ($response->is_success) {
+		print STDERR 
+			"============ RSPONSE START ============\n", 
+			$response->content, 
+			"\n============= RSPONSE END =============\n\n" 
+				if $options->{'verbose'};
+
+		return decode_json $response->content;
+	} else {
+		if (defined $api_request->{'error_overrides'}->{$response->code}) {
+			print STDERR 
+				"============ RSPONSE START ============\nExecuting error override for HTTP return code ", 
+				$response->code, 
+				"\n============= RSPONSE END =============\n\n" 
+					if $options->{'verbose'};
+
+			return $api_request->{'error_overrides'}->{$response->code};
+		} else {
+			die "Error processing “$api_request->{'name'}” API call: " . $response->status_line;
+		}
+	}
+}
+
+
+### Read command line options
+
+GetOptions ($options, 'verbose|v') or die "Invalid options";
+# TODO: print usage if options are invalid
+
+$video_id = pop or die "No video ID or URL";
+# TODO: print usage if no vido id
+
+# Check and fix video ID
+if ($video_id =~ /^\d+$/) {
+	# Good 
+} elsif ($video_id =~ /tvrain\.ru.*-(\d+)\/?$/) {
+	$video_id = $1;
+} else {
+	die "Invalid vido ID or URL";
+	# TODO: Print proper error message and usage
+}
+
+print STDERR 
+	"============ VIDEO ID START ============\n", 
+	$video_id, 
+	"\n============= VIDEO ID END =============\n\n" 
+		if $options->{'verbose'};
+
+
+### Read system config and init it if needed
+
+$config = Config::Tiny->read($config_file_path, 'utf8');
+
+unless (defined $config) {
+	print "Empty / invalid config file → recreating\n";
+
+	$config = Config::Tiny->new;
+	$config->{_}->{'device_uid'} = &cook_device_uid;
+	&write_config;
+
+	print "New device uid created\n";
+}
+
+
+### Login or else link
+
+unless (defined $config->{_}->{'auth'}) {
+	print "Absent / invalid authentication → linking to account\n";
+	
+	my $startlinking_response = call_api &cook_startlinking_request;
+
+	print "Code for linking: $startlinking_response->{'code'}\n\n";
+	print "Q: What shall I do now?\n";
+	print "A: 1. Open http://tvrain.ru/profile/ in brwoser\n";
+	print "   2. Log into your account\n";
+	print "   3. Browse to Profile → Devices\n";
+	print "   4. Enter the linking code and perss Link\n";
+	print "   5. Wait until the get_tvrain resumes\n\n";
+
+	my $link_request = cook_link_request $startlinking_response->{'oid'};
+
+	print "Trying to link…\n";
+	my $link_response;
+
+	do {
+		# TODO: Add some kind of sandwatch
+		sleep $LINK_POLL_TIMEOUT_SEC;
+
+		$link_response = call_api $link_request;
+	} until (defined $link_response->{'user_id'});
+
+	print "Link established\n";
+
+	$config->{_}->{'user_id'} = $link_response->{'user_id'};
+	$config->{_}->{'auth'} = cook_auth $link_response->{'user_id'}, $link_response->{'device_token'};
+
+	&write_config;
+}
+
+
+### Get user profile
+
+$me = call_api &cook_me_request;
+# TODO: Handle authentication error
+print "Login Ok, subscription active for $me->{'vip'} more days\n";
+
+
+### Get video info
+
+my $videos_response = call_api cook_videos_request $video_id;
+
+die "Video not found" if defined $videos_response->{'error'};
+# TODO: Properly inform user about bad video ID
