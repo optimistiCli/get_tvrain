@@ -144,7 +144,18 @@ $user_agent = LWP::UserAgent->new;
 
 # Set options defaults
 $options = {
-	'verbose'	=> 0,
+	'help'				=> 0,
+	'long-help'		=> 0,
+	'verbose'			=> 0,
+	'first-run'		=> 0,
+	'command'			=> 'merge',
+	'quality'			=> 'hd',
+	'output-dir'	=> undef,
+	'output-file'	=> undef,
+	'temp-dir'		=> undef,
+	'id'					=> 0,
+	'yes-all'			=> 0,
+	'config'			=> undef,
 };
 
 ### Functions
@@ -160,6 +171,36 @@ sub brag_and_exit {
 
 	print $err_message, $usage, "\n";
 	exit $exit_code;
+}
+
+sub check_option_command {
+	my $command = shift;
+	# TODO: Implement
+}
+
+sub check_option_quality {
+	my $quality = shift;
+	# TODO: Implement
+}
+
+sub check_option_output-dir {
+	my $output_dir = shift;
+	# TODO: Implement
+}
+
+sub check_option_output-file {
+	my $output_file = shift;
+	# TODO: Implement
+}
+
+sub check_option_temp-dir {
+	my $temp_dir = shift;
+	# TODO: Implement
+}
+
+sub check_option_config {
+	my $config = shift;
+	# TODO: Implement
 }
 
 
@@ -329,9 +370,18 @@ sub call_api {
 ### Read command line options
 
 GetOptions ($options, 
-	'verbose|v',
 	'help|h',
 	'long-help',
+	'verbose|v',
+	'first-run|F',
+	'command|c=s',
+	'quality|q=s',
+	'output-dir|d=s',
+	'output-file|f=s',
+	'temp-dir|t=s',
+	'id|i',
+	'yes-all|y',
+	'config|C=s',
 ) or die "Invalid options";
 # TODO: print usage if options are invalid
 
