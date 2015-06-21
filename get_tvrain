@@ -160,6 +160,14 @@ $options = {
 
 ### Functions
 
+sub debug {
+	my $title = shift;
+	my $text = shift;
+	
+	$title = uc $title;
+	print STDERR "============ $title START ============\n$text\n============= $title END =============\n\n";
+}
+
 sub brag_and_exit {
 	my $err_message = shift;
 	my $exit_code = shift;
@@ -173,43 +181,89 @@ sub brag_and_exit {
 	exit $exit_code;
 }
 
+# Creates an empty file and immediately deletes it
+sub get_file_creation_error {
+	my $file_path = shift;
+
+	return "File exists '$file_path" if -e $file_path;
+
+	open FH, "> $file_path" or return "Can not write to '$file_path', $!";
+	close FH;
+
+	unlink $file_path or die "Failed to delete touched file '$file_path'";
+
+	return undef;			
+}	
+
 sub check_option_command {
-	my $command = shift;
-	# TODO: Implement
+	$_ = shift;
+
+	return 'merge' if /^merge|mkv|join|matroska$/i;
+
+	return 'save' if /^save|download|dl|asis|mp4|dump$/i;
+
+	return 'pls' if /^pls|playlist|pls|play.list|m3u|m3u8$/i;
+
+	brag_and_exit "Unknown command $_";
 }
 
 sub check_option_quality {
-	my $quality = shift;
-	# TODO: Implement
+	$_ = shift;
+
+	return 'hd' if /^hd|hq|high|hi|720|720p$/i;
+
+	return 'sd' if /^sd|sq|stand.*|std|480|480p$/i;
+
+	return 'lo' if /^lo|ld|lq|lo|low|360|360p$/i;
+
+	brag_and_exit "Unknown quality $_";
 }
 
-sub check_option_output-dir {
+sub check_option_output_dir {
 	my $output_dir = shift;
-	# TODO: Implement
+
+	return unless defined $output_dir;
+
+	brag_and_exit "Output directory '$output_dir' does not exist" unless -e $output_dir;
+
+	brag_and_exit "Output directory '$output_dir' is not a directory" unless -d $output_dir;
+
+	brag_and_exit "Can not write to output directory '$output_dir'" unless -w $output_dir;
+
+	$output_dir;
 }
 
-sub check_option_output-file {
+sub check_option_output_file {
 	my $output_file = shift;
-	# TODO: Implement
+
+	return unless defined $output_file;
+
+	if (-e $output_file) {
+		# File exist: check if it is a proper file and if it can be overwritten
+
+		brag_and_exit "Can not overwrite non-file path '$output_file'" unless -f $output_file;
+
+		# TODO: Simlinks get through the -f above. Decide if they need some special tratment.
+
+		brag_and_exit "Can not overwrite file '$output_file'" unless -w $output_file;
+	} else {
+		# File does not exist: check if it can be created and written to
+
+		my $file_creation_error = get_file_creation_error $output_file;
+		brag_and_exit $file_creation_error if defined $file_creation_error;
+	}
+
+	return $output_file;
 }
 
-sub check_option_temp-dir {
-	my $temp_dir = shift;
+sub check_option_temp_dir {
+	$_ = shift;
 	# TODO: Implement
 }
 
 sub check_option_config {
-	my $config = shift;
+	$_ = shift;
 	# TODO: Implement
-}
-
-
-sub debug {
-	my $title = shift;
-	my $text = shift;
-	
-	$title = uc $title;
-	print STDERR "============ $title START ============\n$text\n============= $title END =============\n\n";
 }
 
 sub cook_rand_xxxx {
@@ -377,7 +431,7 @@ GetOptions ($options,
 	'command|c=s',
 	'quality|q=s',
 	'output-dir|d=s',
-	'output-file|f=s',
+	'output-file|o=s',
 	'temp-dir|t=s',
 	'id|i',
 	'yes-all|y',
@@ -391,6 +445,23 @@ GetOptions ($options,
 print $long_help and exit if $options->{'long-help'};
 
 &brag_and_exit if $options->{'help'};
+
+
+### Interpret command line options
+
+$options->{'command'} = check_option_command $options->{'command'};
+$options->{'quality'} = check_option_quality $options->{'quality'};
+$options->{'output-dir'} = check_option_output_dir $options->{'output-dir'};
+$options->{'output-file'} = check_option_output_file $options->{'output-file'};
+
+
+debug 'command', $options->{'command'} if $options->{'verbose'};
+debug 'quality', $options->{'quality'} if $options->{'verbose'};
+debug 'output dir', $options->{'output-dir'} if $options->{'verbose'};
+debug 'output file', $options->{'output-file'} if $options->{'verbose'};
+
+exit;
+
 
 $video_id = pop or die "No video ID or URL";
 # TODO: print usage if no vido id
