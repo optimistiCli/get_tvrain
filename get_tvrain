@@ -192,8 +192,8 @@ sub get_file_creation_error {
 
 	unlink $file_path or die "Failed to delete touched file '$file_path'";
 
-	return undef;			
-}	
+	return undef;
+}
 
 sub check_if_dir_is_wrieable {
 	my $dir_path = shift;
@@ -271,8 +271,20 @@ sub check_option_temp_dir {
 
 sub check_option_config {
 	my $config_file_path = shift;
-	my $config = Config::Tiny->read($config_file_path, 'utf8');
-	return $config if defined $config;
+
+	if (-e $config_file_path) {
+		brag_and_exit "Config file '$config_file_path' can not be written to" unless -w $config_file_path;
+
+		# Avoid accidental damage: accept config file only if the file is a proper config file or if it is an empty file
+		brag_and_exit "Cowardly refusing to use non-config file '$config_file_path'" 
+			unless defined Config::Tiny->read($config_file_path, 'utf8') 
+				|| (stat($config_file_path))[7] == 0;
+	} else {
+		my $file_creation_error = get_file_creation_error $config_file_path;
+		brag_and_exit $file_creation_error if defined $file_creation_error;
+	}
+	
+	return $config_file_path;
 }
 
 sub cook_rand_xxxx {
@@ -446,7 +458,6 @@ GetOptions ($options,
 	'yes-all|y',
 	'config|C=s',
 ) or die "Invalid options";
-# TODO: print usage if options are invalid
 
 
 ### Deal with help requests
@@ -458,12 +469,12 @@ print $long_help and exit if $options->{'long-help'};
 
 ### Interpret command line options
 
-$options->{'command'} = check_option_command $options->{'command'};
-$options->{'quality'} = check_option_quality $options->{'quality'};
-$options->{'output-dir'} = check_option_output_dir $options->{'output-dir'};
-$options->{'output-file'} = check_option_output_file $options->{'output-file'};
-$options->{'temp-dir'} = check_option_temp_dir $options->{'temp-dir'};
-$options->{'config'} = check_option_config $options->{'config'};
+$options->{'command'} = check_option_command $options->{'command'} if defined $options->{'command'};
+$options->{'quality'} = check_option_quality $options->{'quality'} if defined $options->{'quality'};
+$options->{'output-dir'} = check_option_output_dir $options->{'output-dir'} if defined $options->{'output-dir'};
+$options->{'output-file'} = check_option_output_file $options->{'output-file'} if defined $options->{'output-file'};
+$options->{'temp-dir'} = check_option_temp_dir $options->{'temp-dir'} if defined $options->{'temp-dir'};
+$options->{'config'} = check_option_config $options->{'config'} if defined $options->{'config'};
 
 debug 'command', $options->{'command'} if $options->{'verbose'};
 debug 'quality', $options->{'quality'} if $options->{'verbose'};
