@@ -100,6 +100,22 @@ Linking:
 
 ';
 
+our $linking_hint = 'Q: What to do next?
+A: 1. Open http://tvrain.ru/profile/ in a brwoser
+   2. Log into an account
+   3. Browse to Profile → Devices
+   4. Enter the linking code and perss Link
+   5. Wait until the get_tvrain resumes\n
+
+';
+
+our $relink_hint = '
+
+You might want to re-link the client by specifying the -F option.
+For more details please run:
+get_tvran --long-help
+';
+
 
 use open IO  => ":encoding(utf8)";
 binmode STDOUT, ":utf8";
@@ -120,26 +136,32 @@ use IO::Scalar;
 ### Constants
 
 our $CONFIG_FILE_NAME = '.get_tvrain.conf';
-our $DEVICE_NAME = 'JaneErye Client'; #'optimistiCli';
+our $DEVICE_NAME = 'NothingBut Client'; #'optimistiCli';
 our $URL_BASE = 'https://api.tvrain.ru/api_v2';
 our $API_CONSUMER_KEY = 'a908545f-80af-4f99-8dac-fb012cec';
 our $API_VERSION = '2.13';
 our $LINK_POLL_TIMEOUT_SEC=15;
+our $COMMAND_MERGE = 'merge';
+our $COMMAND_SAVE = 'save';
+our $COMMAND_PLAYLIST = 'pls';
+our $QUALITY_HD = 'hd';
+our $QUALITY_SD = 'sd';
+our $QUALITY_LO = 'lo';
 
 
 ### Globals
 
-our $config;
-our $config_file_path;
+our $options;	# Command line options
+our $config;	# Config file values
+our $session;	# Session-wide values
+
+# TODO: Integrate following into session
 our $cgi_utils;
 our $user_agent;
-our $me;
-our $options;
 our $video_id;
 
 ### Init
 
-$config_file_path = "$HOME/$CONFIG_FILE_NAME";
 $cgi_utils = CGI::Utils->new;
 $user_agent = LWP::UserAgent->new;
 
@@ -149,8 +171,8 @@ $options = {
 	'long-help'		=> 0,
 	'verbose'			=> 0,
 	'first-run'		=> 0,
-	'command'			=> 'merge',
-	'quality'			=> 'hd',
+	'command'			=> $COMMAND_MERGE,
+	'quality'			=> $QUALITY_HD,
 	'output-dir'	=> undef,
 	'output-file'	=> undef,
 	'temp-dir'		=> undef,
@@ -161,6 +183,49 @@ $options = {
 
 ### Functions
 
+sub dumpit;
+
+sub dumpit {
+	my $workload = shift;
+	my $name = shift;
+	my $depth = shift;
+
+	$depth ||= 0;
+
+	my $buffer = '';
+
+	my $type = ref($workload);
+
+	if ($type eq 'ARRAY') {
+		$buffer .= '  ' x $depth;
+		$buffer .= $name . ' → ' if defined $name;
+		$buffer .= "[\n";
+
+		for (my $i = 0 ; $i < scalar @$workload; $i++) {
+			$buffer .= dumpit $workload->[$i], $i, $depth + 1;
+		}
+
+		$buffer .= '  ' x $depth;
+		$buffer .= "]\n";
+	} elsif ($type eq 'HASH') {
+		$buffer .= '  ' x $depth;
+		$buffer .= $name . ' → ' if defined $name;
+		$buffer .= "{\n";
+
+		foreach my $key (sort keys %$workload) {
+			$buffer .= dumpit $workload->{$key}, $key, $depth + 1;
+		}
+
+		$buffer .= '  ' x $depth;
+		$buffer .= "}\n";
+	} else {
+		$buffer .= '  ' x $depth;
+		$buffer .= $name . ' → ' if defined $name;
+		$buffer .= "$workload\n";
+	}
+
+	return $buffer;
+}
 sub debug {
 	my $title = shift;
 	my $text = shift;
@@ -214,80 +279,84 @@ sub check_if_dir_is_wrieable {
 }
 
 sub check_option_command {
-	$_ = shift;
+	# Command should be set, otherwise there is an error
+	$_ = $options->{'command'};
 
-	return 'merge' if /^merge|mkv|join|matroska$/i;
+	$options->{'command'} = 
+		/^merge|mkv|join|matroska$/i ? $COMMAND_MERGE :
+		/^save|download|dl|asis|mp4|dump$/i ? $COMMAND_SAVE :
+		/^pls|playlist|pls|play.list|m3u|m3u8$/i ? $COMMAND_PLAYLIST :
+		brag_and_exit "Unknown command $_";
 
-	return 'save' if /^save|download|dl|asis|mp4|dump$/i;
-
-	return 'pls' if /^pls|playlist|pls|play.list|m3u|m3u8$/i;
-
-	brag_and_exit "Unknown command $_";
+	debug 'command', $options->{'command'} if $options->{'verbose'};
 }
 
 sub check_option_quality {
-	$_ = shift;
+	# Quality should be set, otherwise there is an error
+	$_ = $options->{'quality'};
 
-	return 'hd' if /^hd|hq|high|hi|720|720p$/i;
+	$options->{'quality'} = 
+		/^hd|hq|high|hi|720|720p$/i ? $QUALITY_HD :
+		/^sd|sq|stand.*|std|480|480p$/i ? $QUALITY_SD :
+		/^lo|ld|lq|lo|low|360|360p$/i ? $QUALITY_LO :
+		brag_and_exit "Unknown quality $_";
 
-	return 'sd' if /^sd|sq|stand.*|std|480|480p$/i;
-
-	return 'lo' if /^lo|ld|lq|lo|low|360|360p$/i;
-
-	brag_and_exit "Unknown quality $_";
+	debug 'quality', $options->{'quality'} if $options->{'verbose'};
 }
 
 sub check_option_output_dir {
-	my $output_dir = shift;
+	return unless defined $options->{'output-dir'};
 
-	return check_if_dir_is_wrieable $output_dir, 'Output directory';
+	$options->{'output-dir'} = check_if_dir_is_wrieable $options->{'output-dir'}, 'Output directory';
+
+	debug 'output dir', $options->{'output-dir'} if $options->{'verbose'};
 }
 
 sub check_option_output_file {
-	my $output_file = shift;
+	return unless defined $options->{'output-file'};
 
-	return unless defined $output_file;
-
-	if (-e $output_file) {
+	if (-e $options->{'output-file'}) {
 		# File exist: check if it is a proper file and if it can be overwritten
 
-		brag_and_exit "Can not overwrite non-file path '$output_file'" unless -f $output_file;
+		brag_and_exit "Can not overwrite non-file path '$options->{'output-file'}'" unless -f $options->{'output-file'};
 
 		# TODO: Simlinks get through the -f above. Decide if they need some special tratment.
 
-		brag_and_exit "Can not overwrite file '$output_file'" unless -w $output_file;
+		brag_and_exit "Can not overwrite file '$options->{'output-file'}'" unless -w $options->{'output-file'};
 	} else {
 		# File does not exist: check if it can be created and written to
 
-		my $file_creation_error = get_file_creation_error $output_file;
+		my $file_creation_error = get_file_creation_error $options->{'output-file'};
 		brag_and_exit $file_creation_error if defined $file_creation_error;
 	}
 
-	return $output_file;
+	debug 'output file', $options->{'output-file'} if $options->{'verbose'};
 }
 
 sub check_option_temp_dir {
-	my $temp_dir = shift;
+	return unless defined $options->{'temp-dir'};
 
-	return check_if_dir_is_wrieable $temp_dir, 'Temporary directory';
+	$options->{'temp-dir'} = check_if_dir_is_wrieable $options->{'temp-dir'}, 'Temporary directory';
+
+	debug 'temp dir', $options->{'temp-dir'} if $options->{'verbose'};
 }
 
 sub check_option_config {
-	my $config_file_path = shift;
+	return unless defined $options->{'config'};
 
-	if (-e $config_file_path) {
-		brag_and_exit "Config file '$config_file_path' can not be written to" unless -w $config_file_path;
+	if (-e $options->{'config'}) {
+		brag_and_exit "Config file '$options->{'config'}' can not be written to" unless -w $options->{'config'};
 
 		# Avoid accidental damage: accept config file only if the file is a proper config file or if it is an empty file
-		brag_and_exit "Cowardly refusing to use non-config file '$config_file_path'" 
-			unless defined Config::Tiny->read($config_file_path, 'utf8') 
-				|| (stat($config_file_path))[7] == 0;
+		brag_and_exit "Cowardly refusing to use non-config file '$options->{'config'}'" 
+			unless defined Config::Tiny->read($options->{'config'}, 'utf8') 
+				|| (stat($options->{'config'}))[7] == 0;
 	} else {
-		my $file_creation_error = get_file_creation_error $config_file_path;
+		my $file_creation_error = get_file_creation_error $options->{'config'};
 		brag_and_exit $file_creation_error if defined $file_creation_error;
 	}
-	
-	return $config_file_path;
+
+	debug 'config', $options->{'config'} if $options->{'verbose'};
 }
 
 sub cook_rand_xxxx {
@@ -365,6 +434,9 @@ sub cook_me_request {
 		'extra_headers'		=> {
 		},
 		'error_overrides'	=> {
+			'403'							=> {
+				'error'						=> '403 Forbidden',
+			}
 		},
 	}
 }
@@ -381,15 +453,15 @@ sub cook_videos_request {
 		'extra_headers'		=> {
 		},
 		'error_overrides'	=> {
-			'404'							=> {
+			'404'							=> [{
 				'error'						=> '404 Not Found',
-			}
+			}]
 		},
 	}
 }
 
 sub write_config {
-	$config->write($config_file_path, 'utf8') or die "Error writing config " . $config->errstr();
+	$config->write($session->{'config_file_path'}, 'utf8') or die "Error writing config " . $config->errstr();
 }
 
 sub cook_auth {
@@ -445,7 +517,6 @@ sub call_api {
 }
 
 sub read_command_line_options {
-
 	my $error_message;
 	my $error = tie *STDERR, 'IO::Scalar', \$error_message;
 
@@ -470,80 +541,96 @@ sub read_command_line_options {
 	brag_and_exit $error_message unless $all_went_well;
 }
 
-### Read command line options
-&read_command_line_options;
+sub deal_with_help_requests {
+	print $long_help and exit if $options->{'long-help'};
 
-### Deal with help requests
-
-print $long_help and exit if $options->{'long-help'};
-
-&brag_and_exit if $options->{'help'};
-
-
-### Interpret command line options
-
-$options->{'command'} = check_option_command $options->{'command'} if defined $options->{'command'};
-$options->{'quality'} = check_option_quality $options->{'quality'} if defined $options->{'quality'};
-$options->{'output-dir'} = check_option_output_dir $options->{'output-dir'} if defined $options->{'output-dir'};
-$options->{'output-file'} = check_option_output_file $options->{'output-file'} if defined $options->{'output-file'};
-$options->{'temp-dir'} = check_option_temp_dir $options->{'temp-dir'} if defined $options->{'temp-dir'};
-$options->{'config'} = check_option_config $options->{'config'} if defined $options->{'config'};
-
-debug 'command', $options->{'command'} if $options->{'verbose'};
-debug 'quality', $options->{'quality'} if $options->{'verbose'};
-debug 'output dir', $options->{'output-dir'} if $options->{'verbose'};
-debug 'output file', $options->{'output-file'} if $options->{'verbose'};
-debug 'temp dir', $options->{'temp-dir'} if $options->{'verbose'};
-debug 'config', $options->{'config'} if $options->{'verbose'};
-
-exit;
-
-
-$video_id = pop or die "No video ID or URL";
-# TODO: print usage if no vido id
-
-# Check and fix video ID
-if ($video_id =~ /^\d+$/) {
-	# Good 
-} elsif ($video_id =~ /tvrain\.ru.*-(\d+)\/?$/) {
-	$video_id = $1;
-} else {
-	die "Invalid vido ID or URL";
-	# TODO: Print proper error message and usage
+	&brag_and_exit if $options->{'help'};
 }
 
-debug 'video id', $video_id if $options->{'verbose'};
-
-
-### Read system config and init it if needed
-
-$config = Config::Tiny->read($config_file_path, 'utf8');
-
-unless (defined $config) {
-	print "Empty / invalid config file → recreating\n";
-
-	$config = Config::Tiny->new;
-	$config->{_}->{'device_uid'} = &cook_device_uid;
-	&write_config;
-
-	print "New device uid created\n";
+sub interpret_command_line_options_to_merge {
+	&check_option_quality;
+	&check_option_output_dir;
+	&check_option_output_file;
+	&check_option_temp_dir;
 }
 
+sub interpret_command_line_options_to_save {
+	&check_option_quality;
+	&check_option_output_dir;
+	&check_option_output_file;
+}
 
-### Login or else link
+sub interpret_command_line_options_to_playlist {
+	&check_option_quality;
+	&check_option_output_dir;
+	&check_option_output_file;
+}
 
-unless (defined $config->{_}->{'auth'}) {
+sub interpret_command_line_options {
+	&check_option_command;
+
+	if ($options->{'command'} eq $COMMAND_MERGE) {
+		&interpret_command_line_options_to_merge;
+	} elsif ($options->{'command'} eq $COMMAND_SAVE) {
+		&interpret_command_line_options_to_save;
+	} elsif ($options->{'command'} eq $COMMAND_PLAYLIST) {
+		&interpret_command_line_options_to_playlist;
+	} else {
+		die "Impossible command";
+	}
+
+	&check_option_config;
+}
+
+sub get_video_id {
+	brag_and_exit 'No video ID or URL' unless scalar @ARGV;
+
+	$_ = pop @ARGV;
+
+	if (/^\d+$/) {
+		$session->{'video_id'} = $_;
+	} elsif (/tvrain\.ru.*-(\d+)\/?$/) {
+		$session->{'video_id'} = $1;
+	} else {
+		brag_and_exit "Invalid video ID or URL";
+	}
+
+	debug 'video id', $session->{'video_id'} if $options->{'verbose'};
+}
+
+sub set_config_file_path {
+	$session->{'config_file_path'} = 
+		defined $options->{'config'} ? $options->{'config'} :
+		"$HOME/$CONFIG_FILE_NAME";
+
+	debug 'config file path', $session->{'config_file_path'} if $options->{'verbose'};
+}
+
+sub read_config {
+	$config = Config::Tiny->read($session->{'config_file_path'}, 'utf8');
+
+	unless (defined $config) {
+		print "Empty / invalid config file → recreating\n";
+	
+		$config = Config::Tiny->new;
+		$config->{_}->{'device_uid'} = &cook_device_uid;
+
+		&write_config;
+
+		print "New device uid created\n";
+	}
+
+	debug 'device uid', $config->{_}->{'device_uid'} if $options->{'verbose'};
+}
+
+sub link_if_not_linked {
+	return if defined $config->{_}->{'auth'};
+
 	print "Absent / invalid authentication → linking to account\n";
 	
 	my $startlinking_response = call_api &cook_startlinking_request;
 
-	print "Code for linking: $startlinking_response->{'code'}\n\n";
-	print "Q: What shall I do now?\n";
-	print "A: 1. Open http://tvrain.ru/profile/ in brwoser\n";
-	print "   2. Log into your account\n";
-	print "   3. Browse to Profile → Devices\n";
-	print "   4. Enter the linking code and perss Link\n";
-	print "   5. Wait until the get_tvrain resumes\n\n";
+	print "Code for linking: $startlinking_response->{'code'}\n\n$linking_hint";
 
 	my $link_request = cook_link_request $startlinking_response->{'oid'};
 
@@ -559,23 +646,50 @@ unless (defined $config->{_}->{'auth'}) {
 
 	print "Link established\n";
 
-	$config->{_}->{'user_id'} = $link_response->{'user_id'};
 	$config->{_}->{'auth'} = cook_auth $link_response->{'user_id'}, $link_response->{'device_token'};
 
 	&write_config;
 }
 
+sub get_me_to_check_auth {
+	my $me_response = call_api &cook_me_request;
 
-### Get user profile
+	brag_and_exit "Authentication failure${relink_hint}" if defined $me_response->{'error'};
 
-$me = call_api &cook_me_request;
-# TODO: Handle authentication error
-print "Login Ok, subscription active for $me->{'vip'} more days\n";
+	$session->{'me'} = $me_response;
+
+	die "Malformed 'me' response" unless defined $session->{'me'}->{'vip'};
+
+	brag_and_exit "Subscription expired :-(\nPlease visit TVRain.ru and pay them, then come back." if $session->{'me'}->{'vip'} < 0;
+
+	print "Login Ok, subscription active for $session->{'me'}->{'vip'} more days\n";
+}
+
+sub get_videos {
+	my $videos_response = call_api cook_videos_request $session->{'video_id'};
+
+	brag_and_exit "Video not found\nPlease check Video ID / URL" if defined $videos_response->[0]->{'error'};
+
+	$session->{'videos'} = $videos_response;
+
+	debug 'videos', dumpit $session->{'videos'} if $options->{'verbose'};
+}
+
+sub main {
+	&read_command_line_options;
+	&deal_with_help_requests;
+	&interpret_command_line_options;
+	&get_video_id;
+	&set_config_file_path;
+	&read_config;
+	&link_if_not_linked;
+	&get_me_to_check_auth;
+	# TODO: Ask for temp dir
+	&get_videos;
+}
 
 
-### Get video info
+### Main
 
-my $videos_response = call_api cook_videos_request $video_id;
+&main;
 
-die "Video not found" if defined $videos_response->{'error'};
-# TODO: Properly inform user about bad video ID
