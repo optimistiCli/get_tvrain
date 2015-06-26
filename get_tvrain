@@ -114,6 +114,7 @@ use LWP::UserAgent;
 use JSON;
 use MIME::Base64 qw(encode_base64);
 use Getopt::Long qw(:config no_ignore_case require_order bundling);
+use IO::Scalar;
 
 
 ### Constants
@@ -173,7 +174,9 @@ sub brag_and_exit {
 	my $exit_code = shift;
 
 	if ($err_message) {
-		$err_message = "Error:\n  $err_message\n\n";
+		chomp $err_message;
+		$err_message =~ s/^/  /gms;
+		$err_message = "Error:\n$err_message\n\n";
 		$exit_code = 1 unless $exit_code;
 	}
 
@@ -441,24 +444,34 @@ sub call_api {
 	}
 }
 
+sub read_command_line_options {
+
+	my $error_message;
+	my $error = tie *STDERR, 'IO::Scalar', \$error_message;
+
+	my $all_went_well = GetOptions ($options, 
+		'help|h',
+		'long-help',
+		'verbose|v',
+		'first-run|F',
+		'command|c=s',
+		'quality|q=s',
+		'output-dir|d=s',
+		'output-file|o=s',
+		'temp-dir|t=s',
+		'id|i',
+		'yes-all|y',
+		'config|C=s',
+	);
+
+	undef $error;
+	untie *STDERR;
+
+	brag_and_exit $error_message unless $all_went_well;
+}
 
 ### Read command line options
-
-GetOptions ($options, 
-	'help|h',
-	'long-help',
-	'verbose|v',
-	'first-run|F',
-	'command|c=s',
-	'quality|q=s',
-	'output-dir|d=s',
-	'output-file|o=s',
-	'temp-dir|t=s',
-	'id|i',
-	'yes-all|y',
-	'config|C=s',
-) or die "Invalid options";
-
+&read_command_line_options;
 
 ### Deal with help requests
 
