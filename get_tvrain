@@ -100,12 +100,12 @@ Linking:
 
 ';
 
-our $linking_hint = 'Q: What to do next?
-A: 1. Open http://tvrain.ru/profile/ in a brwoser
-   2. Log into an account
-   3. Browse to Profile → Devices
-   4. Enter the linking code and perss Link
-   5. Wait until the get_tvrain resumes\n
+our $linking_hint = 'Q What to do next?
+A 1. Open http://tvrain.ru/profile/ in a brwoser
+  2. Log into an account
+  3. Browse to "Profile" → "Devices"
+  4. Enter the linking code (see above) and perss "Link"
+  5. Wait until get_tvrain resumes\n
 
 ';
 
@@ -606,18 +606,26 @@ sub set_config_file_path {
 	debug 'config file path', $session->{'config_file_path'} if $options->{'verbose'};
 }
 
+sub create_clean_config {
+	$config = Config::Tiny->new;
+	$config->{_}->{'device_uid'} = &cook_device_uid;
+
+	&write_config;
+
+	print "New device uid created\n";
+}
+
 sub read_config {
-	$config = Config::Tiny->read($session->{'config_file_path'}, 'utf8');
+	if ($options->{'first-run'}) {
+		print "Resetting config file per user request\n";
+		&create_clean_config;
+	} else {
+		$config = Config::Tiny->read($session->{'config_file_path'}, 'utf8');
 
-	unless (defined $config) {
-		print "Empty / invalid config file → recreating\n";
-	
-		$config = Config::Tiny->new;
-		$config->{_}->{'device_uid'} = &cook_device_uid;
-
-		&write_config;
-
-		print "New device uid created\n";
+		unless (defined $config && defined $config->{_}->{'device_uid'}) {
+			print "Empty / invalid config file → recreating\n";
+			&create_clean_config;
+		}
 	}
 
 	debug 'device uid', $config->{_}->{'device_uid'} if $options->{'verbose'};
@@ -630,7 +638,7 @@ sub link_if_not_linked {
 	
 	my $startlinking_response = call_api &cook_startlinking_request;
 
-	print "Code for linking: $startlinking_response->{'code'}\n\n$linking_hint";
+	print "Linking code:\n  $startlinking_response->{'code'}\n\n$linking_hint";
 
 	my $link_request = cook_link_request $startlinking_response->{'oid'};
 
