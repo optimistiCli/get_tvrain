@@ -226,6 +226,8 @@ sub dumpit {
 
 	return $buffer;
 }
+
+# TODO: Implement 2-level verbosity with no operational output on base level.
 sub debug {
 	my $title = shift;
 	my $text = shift;
@@ -631,6 +633,25 @@ sub read_config {
 	debug 'device uid', $config->{_}->{'device_uid'} if $options->{'verbose'};
 }
 
+sub decide_on_temp_dir {
+	# TODO: Implement
+	if (defined $config->{_}->{'temp_dir'}) {
+		if (defined $options->{'temp-dir'}) {
+			# Use options, no checking needed
+		} else {
+			# Check and use config
+		}
+	} else {
+		if (defined $options->{'temp-dir'}) {
+			# Use options and write it to config
+		} else {
+			# It's first run: ask user, check, write to config and use
+		}
+	}
+
+	check_if_dir_is_wrieable $options->{'temp-dir'}, 'Temporary directory';
+}
+
 sub link_if_not_linked {
 	return if defined $config->{_}->{'auth'};
 
@@ -690,9 +711,9 @@ sub main {
 	&get_video_id;
 	&set_config_file_path;
 	&read_config;
+	&decide_on_temp_dir;
 	&link_if_not_linked;
 	&get_me_to_check_auth;
-	# TODO: Ask for temp dir
 	&get_videos;
 }
 
