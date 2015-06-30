@@ -131,6 +131,7 @@ use JSON;
 use MIME::Base64 qw(encode_base64);
 use Getopt::Long qw(:config no_ignore_case require_order bundling);
 use IO::Scalar;
+use Cwd qw(realpath);
 
 
 ### Constants
@@ -168,14 +169,14 @@ $user_agent = LWP::UserAgent->new;
 # Set options defaults
 $options = {
 	'help'				=> 0,
-	'long-help'		=> 0,
+	'long_help'		=> 0,
 	'verbose'			=> 0,
-	'first-run'		=> 0,
+	'first_run'		=> 0,
 	'command'			=> $COMMAND_MERGE,
 	'quality'			=> $QUALITY_HD,
-	'output-dir'	=> undef,
-	'output-file'	=> undef,
-	'temp-dir'		=> undef,
+	'output_dir'	=> undef,
+	'output_file'	=> undef,
+	'temp_dir'		=> undef,
 	'id'					=> 0,
 	'yes-all'			=> 0,
 	'config'			=> undef,
@@ -265,17 +266,28 @@ sub get_file_creation_error {
 	return undef;
 }
 
+sub get_dir_wrieable_error {
+	my $dir_path = shift;
+	my $dir_name = shift;
+
+	return "$dir_name '$dir_path' does not exist" unless -e $dir_path;
+
+	return "$dir_name '$dir_path' is not a directory" unless -d $dir_path;
+
+	return "$dir_name '$dir_path' can not be written to" unless -w $dir_path;
+
+	undef;
+}
+
 sub check_if_dir_is_wrieable {
 	my $dir_path = shift;
 	my $dir_name = shift;
 
 	return unless defined $dir_path;
 
-	brag_and_exit "$dir_name '$dir_path' does not exist" unless -e $dir_path;
+	my $dir_wrieable_error = get_dir_wrieable_error $dir_path, $dir_name;
 
-	brag_and_exit "$dir_name '$dir_path' is not a directory" unless -d $dir_path;
-
-	brag_and_exit "$dir_name '$dir_path' can not be written to" unless -w $dir_path;
+	brag_and_exit $dir_wrieable_error if defined $dir_wrieable_error;
 
 	$dir_path;
 }
@@ -307,40 +319,40 @@ sub check_option_quality {
 }
 
 sub check_option_output_dir {
-	return unless defined $options->{'output-dir'};
+	return unless defined $options->{'output_dir'};
 
-	$options->{'output-dir'} = check_if_dir_is_wrieable $options->{'output-dir'}, 'Output directory';
+	$options->{'output_dir'} = check_if_dir_is_wrieable $options->{'output_dir'}, 'Output directory';
 
-	debug 'output dir', $options->{'output-dir'} if $options->{'verbose'};
+	debug 'output dir', $options->{'output_dir'} if $options->{'verbose'};
 }
 
 sub check_option_output_file {
-	return unless defined $options->{'output-file'};
+	return unless defined $options->{'output_file'};
 
-	if (-e $options->{'output-file'}) {
+	if (-e $options->{'output_file'}) {
 		# File exist: check if it is a proper file and if it can be overwritten
 
-		brag_and_exit "Can not overwrite non-file path '$options->{'output-file'}'" unless -f $options->{'output-file'};
+		brag_and_exit "Can not overwrite non-file path '$options->{'output_file'}'" unless -f $options->{'output_file'};
 
 		# TODO: Simlinks get through the -f above. Decide if they need some special tratment.
 
-		brag_and_exit "Can not overwrite file '$options->{'output-file'}'" unless -w $options->{'output-file'};
+		brag_and_exit "Can not overwrite file '$options->{'output_file'}'" unless -w $options->{'output_file'};
 	} else {
 		# File does not exist: check if it can be created and written to
 
-		my $file_creation_error = get_file_creation_error $options->{'output-file'};
+		my $file_creation_error = get_file_creation_error $options->{'output_file'};
 		brag_and_exit $file_creation_error if defined $file_creation_error;
 	}
 
-	debug 'output file', $options->{'output-file'} if $options->{'verbose'};
+	debug 'output file', $options->{'output_file'} if $options->{'verbose'};
 }
 
 sub check_option_temp_dir {
-	return unless defined $options->{'temp-dir'};
+	return unless defined $options->{'temp_dir'};
 
-	$options->{'temp-dir'} = check_if_dir_is_wrieable $options->{'temp-dir'}, 'Temporary directory';
+	$options->{'temp_dir'} = check_if_dir_is_wrieable $options->{'temp_dir'}, 'Temporary directory';
 
-	debug 'temp dir', $options->{'temp-dir'} if $options->{'verbose'};
+	debug 'temp dir', $options->{'temp_dir'} if $options->{'verbose'};
 }
 
 sub check_option_config {
@@ -524,14 +536,14 @@ sub read_command_line_options {
 
 	my $all_went_well = GetOptions ($options, 
 		'help|h',
-		'long-help',
+		'long_help|long-help',
 		'verbose|v',
-		'first-run|F',
+		'first_run|first-run|F',
 		'command|c=s',
 		'quality|q=s',
-		'output-dir|d=s',
-		'output-file|o=s',
-		'temp-dir|t=s',
+		'output_dir|output-dir|d=s',
+		'output_file|output-file|o=s',
+		'temp_dir|temp-dir|t=s',
 		'id|i',
 		'yes-all|y',
 		'config|C=s',
@@ -544,43 +556,17 @@ sub read_command_line_options {
 }
 
 sub deal_with_help_requests {
-	print $long_help and exit if $options->{'long-help'};
+	print $long_help and exit if $options->{'long_help'};
 
 	&brag_and_exit if $options->{'help'};
 }
 
-sub interpret_command_line_options_to_merge {
+sub interpret_command_line_options {
+	&check_option_command;
 	&check_option_quality;
 	&check_option_output_dir;
 	&check_option_output_file;
 	&check_option_temp_dir;
-}
-
-sub interpret_command_line_options_to_save {
-	&check_option_quality;
-	&check_option_output_dir;
-	&check_option_output_file;
-}
-
-sub interpret_command_line_options_to_playlist {
-	&check_option_quality;
-	&check_option_output_dir;
-	&check_option_output_file;
-}
-
-sub interpret_command_line_options {
-	&check_option_command;
-
-	if ($options->{'command'} eq $COMMAND_MERGE) {
-		&interpret_command_line_options_to_merge;
-	} elsif ($options->{'command'} eq $COMMAND_SAVE) {
-		&interpret_command_line_options_to_save;
-	} elsif ($options->{'command'} eq $COMMAND_PLAYLIST) {
-		&interpret_command_line_options_to_playlist;
-	} else {
-		die "Impossible command";
-	}
-
 	&check_option_config;
 }
 
@@ -618,7 +604,7 @@ sub create_clean_config {
 }
 
 sub read_config {
-	if ($options->{'first-run'}) {
+	if ($options->{'first_run'}) {
 		print "Resetting config file per user request\n";
 		&create_clean_config;
 	} else {
@@ -633,23 +619,68 @@ sub read_config {
 	debug 'device uid', $config->{_}->{'device_uid'} if $options->{'verbose'};
 }
 
+sub save_default_temp_dir {
+	my $temp_dir = shift;
+
+	$config->{_}->{'temp_dir'} = $temp_dir;
+
+	print "Default temporary dir is set to '$temp_dir'\n";
+
+	&write_config;
+}
+
+sub ask_user_for_deafult_temp_dir {
+	my $dir_wrieable_error;
+	my $temp_dir;
+
+	do {
+		print "Please set the default temporary directory.\nJust press 'Enter' to each time use current directory.\n:";
+
+		$temp_dir = <STDIN>;
+		chomp $temp_dir;
+		$temp_dir =~ s/^\s+//;
+		$temp_dir =~ s/\s+$//;
+
+		if ($temp_dir eq '') {
+			$temp_dir = '.'
+		} elsif ($temp_dir =~ /^\.{1,2}(?:\/.*)?$/) {
+			$temp_dir = realpath $temp_dir;
+		} elsif ($temp_dir =~ /^\~(\/.*)?$/) {
+			$temp_dir = "${HOME}$1";
+		}
+
+		$dir_wrieable_error = get_dir_wrieable_error $temp_dir, 'Default temporary directory';
+
+		print $dir_wrieable_error, "\n\n" if defined $dir_wrieable_error;
+	} while (defined $dir_wrieable_error);
+
+	return $temp_dir;
+}
+
 sub decide_on_temp_dir {
-	# TODO: Implement
 	if (defined $config->{_}->{'temp_dir'}) {
-		if (defined $options->{'temp-dir'}) {
+		if (defined $options->{'temp_dir'}) {
 			# Use options, no checking needed
+			$session->{'temp_dir'} = $options->{'temp_dir'};
 		} else {
 			# Check and use config
+			$session->{'temp_dir'} = check_if_dir_is_wrieable $config->{_}->{'temp_dir'}, 'Default temporary directory';
 		}
 	} else {
-		if (defined $options->{'temp-dir'}) {
+		if (defined $options->{'temp_dir'}) {
 			# Use options and write it to config
+			save_default_temp_dir $options->{'temp_dir'};
+
+			$session->{'temp_dir'} = $options->{'temp_dir'};
 		} else {
 			# It's first run: ask user, check, write to config and use
+			save_default_temp_dir &ask_user_for_deafult_temp_dir;
+
+			$session->{'temp_dir'} = $config->{_}->{'temp_dir'};
 		}
 	}
 
-	check_if_dir_is_wrieable $options->{'temp-dir'}, 'Temporary directory';
+	check_if_dir_is_wrieable $options->{'temp_dir'}, 'Temporary directory';
 }
 
 sub link_if_not_linked {
