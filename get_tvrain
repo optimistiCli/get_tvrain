@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 ###
-###	⛈	optimistiCli: TVRain.ru command line client intended to provide legitimate paying users access to the video archive.
+###	⛈	optimistiCli: TVRain.ru command line client that gives legitimate paying users command line access to the video archive.
 ###
 
 use utf8;
@@ -148,6 +148,8 @@ our $COMMAND_PLAYLIST = 'pls';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
 our $QUALITY_LO = 'lo';
+# TODO: Implement proper file name length check
+our $MAXLENGTH = 127; # 255; 
 
 
 ### Globals
@@ -255,10 +257,11 @@ sub brag_and_exit {
 # Creates an empty file and immediately deletes it
 sub get_file_creation_error {
 	my $file_path = shift;
+	my $description = shift;
 
-	return "File exists '$file_path" if -e $file_path;
+	return "$description already exists '$file_path" if -e $file_path;
 
-	open FH, "> $file_path" or return "Can not write to '$file_path', $!";
+	open FH, "> $file_path" or return "$description can not be written to '$file_path', $!";
 	close FH;
 
 	unlink $file_path or die "Failed to delete touched file '$file_path'";
@@ -268,24 +271,24 @@ sub get_file_creation_error {
 
 sub get_dir_wrieable_error {
 	my $dir_path = shift;
-	my $dir_name = shift;
+	my $description = shift;
 
-	return "$dir_name '$dir_path' does not exist" unless -e $dir_path;
+	return "$description '$dir_path' does not exist" unless -e $dir_path;
 
-	return "$dir_name '$dir_path' is not a directory" unless -d $dir_path;
+	return "$description '$dir_path' is not a directory" unless -d $dir_path;
 
-	return "$dir_name '$dir_path' can not be written to" unless -w $dir_path;
+	return "$description '$dir_path' can not be written to" unless -w $dir_path;
 
 	undef;
 }
 
 sub check_if_dir_is_wrieable {
 	my $dir_path = shift;
-	my $dir_name = shift;
+	my $description = shift;
 
 	return unless defined $dir_path;
 
-	my $dir_wrieable_error = get_dir_wrieable_error $dir_path, $dir_name;
+	my $dir_wrieable_error = get_dir_wrieable_error $dir_path, $description;
 
 	brag_and_exit $dir_wrieable_error if defined $dir_wrieable_error;
 
@@ -297,9 +300,9 @@ sub check_option_command {
 	$_ = $options->{'command'};
 
 	$options->{'command'} = 
-		/^merge|mkv|join|matroska$/i ? $COMMAND_MERGE :
-		/^save|download|dl|asis|mp4|dump$/i ? $COMMAND_SAVE :
-		/^pls|playlist|pls|play.list|m3u|m3u8$/i ? $COMMAND_PLAYLIST :
+		/^m|merge|mkv|join|matroska$/i ? $COMMAND_MERGE :
+		/^s|save|download|dl|asis|mp4|dump$/i ? $COMMAND_SAVE :
+		/^p|pls|playlist|pls|play.list|m3u|m3u8$/i ? $COMMAND_PLAYLIST :
 		brag_and_exit "Unknown command $_";
 
 	debug 'command', $options->{'command'} if $options->{'verbose'};
@@ -310,9 +313,9 @@ sub check_option_quality {
 	$_ = $options->{'quality'};
 
 	$options->{'quality'} = 
-		/^hd|hq|high|hi|720|720p$/i ? $QUALITY_HD :
-		/^sd|sq|stand.*|std|480|480p$/i ? $QUALITY_SD :
-		/^lo|ld|lq|lo|low|360|360p$/i ? $QUALITY_LO :
+		/^h|hd|hq|high|hi|720|720p$/i ? $QUALITY_HD :
+		/^s|sd|sq|stand.*|std|480|480p$/i ? $QUALITY_SD :
+		/^l|lo|ld|lq|lo|low|360|360p$/i ? $QUALITY_LO :
 		brag_and_exit "Unknown quality $_";
 
 	debug 'quality', $options->{'quality'} if $options->{'verbose'};
@@ -326,23 +329,34 @@ sub check_option_output_dir {
 	debug 'output dir', $options->{'output_dir'} if $options->{'verbose'};
 }
 
-sub check_option_output_file {
-	return unless defined $options->{'output_file'};
+sub check_if_file_is_writeable {
+	my $file_path = shift;
+	my $description = shift;
 
-	if (-e $options->{'output_file'}) {
+	return unless defined $file_path;
+
+	if (-e $file_path) {
 		# File exist: check if it is a proper file and if it can be overwritten
 
-		brag_and_exit "Can not overwrite non-file path '$options->{'output_file'}'" unless -f $options->{'output_file'};
+		brag_and_exit "$description is not a file '$file_path'" unless -f $file_path;
 
 		# TODO: Simlinks get through the -f above. Decide if they need some special tratment.
 
-		brag_and_exit "Can not overwrite file '$options->{'output_file'}'" unless -w $options->{'output_file'};
+		brag_and_exit "$description can not be overwritten '$file_path'" unless -w $file_path;
 	} else {
 		# File does not exist: check if it can be created and written to
 
-		my $file_creation_error = get_file_creation_error $options->{'output_file'};
+		my $file_creation_error = get_file_creation_error $file_path, $description;
 		brag_and_exit $file_creation_error if defined $file_creation_error;
 	}
+
+	$file_path;
+}
+
+sub check_option_output_file {
+	return unless defined $options->{'output_file'};
+
+	$options->{'output_file'} = check_if_file_is_writeable $options->{'output_file'}, 'Output file';
 
 	debug 'output file', $options->{'output_file'} if $options->{'verbose'};
 }
@@ -366,7 +380,7 @@ sub check_option_config {
 			unless defined Config::Tiny->read($options->{'config'}, 'utf8') 
 				|| (stat($options->{'config'}))[7] == 0;
 	} else {
-		my $file_creation_error = get_file_creation_error $options->{'config'};
+		my $file_creation_error = get_file_creation_error $options->{'config'}, 'Config file';
 		brag_and_exit $file_creation_error if defined $file_creation_error;
 	}
 
@@ -735,6 +749,135 @@ sub get_videos {
 	debug 'videos', dumpit $session->{'videos'} if $options->{'verbose'};
 }
 
+sub get_common_name {
+	my $common;
+
+	for (my $i = 0; $i < scalar @{$session->{'videos'}}; $i++) {
+		$_ = $session->{'videos'}->[$i]->{'name'};
+
+		# If the name is not prceded with smth like 1/3 there is no common name
+		return undef unless /^\d+\W\d+\s+(.*)$/;
+
+		$common ||= $1;
+
+		# If the part of the name that follows numbers is differernt from fule to file then there is no common name
+		return undef unless $1 eq $common;
+	}
+
+	return $common;
+}
+
+sub cook_extension {
+	return '.mkv' if $options->{'command'} eq $COMMAND_MERGE;
+
+	return '.mp4' if $options->{'command'} eq $COMMAND_SAVE;
+
+	return '.m3u8' if $options->{'command'} eq $COMMAND_PLAYLIST;
+
+	die 'Unknown command';
+}
+
+sub fit_file_name_length {
+	$_ = shift;
+
+	return $_ if length $_ <= $MAXLENGTH;
+
+	s/(\.\S+?)$//;
+	my $ext = $1;
+
+	substr($_, 0,$MAXLENGTH - length $ext - 1) . '…' . $ext;
+}
+
+sub cook_file_name {
+	local $_;
+
+	$_ = $session->{'video_id'} if $config->{_}->{'id'};
+
+	$_ ||= &get_common_name;
+
+	$_ ||= $session->{'videos'}->[0]->{'name'};
+
+	die 'Can not cook file name' unless $_;
+
+	s/^\s+//;
+	s/\s+$//;
+	s/\s*:+\s*/ - /g;
+	s/[:#\\\/\*]+/./g;
+	s/[\{\<]/[/g;
+	s/[\}\>]/[]/g;
+
+	$_ .= &cook_extension;
+
+	fit_file_name_length $_;
+}
+
+sub cook_output_dir {
+	return $options->{'output_dir'} if defined $options->{'output_dir'};
+
+	return check_if_dir_is_wrieable '.', 'Current directory';
+}
+
+sub decide_on_output_path {
+	$session->{'output_path'} = defined $options->{'output_file'}
+		? $options->{'output_file'}
+		: check_if_file_is_writeable &cook_output_dir . '/' . &cook_file_name, 'Output path';
+
+	debug 'output path', $session->{'output_path'} if $options->{'verbose'};
+}
+
+sub merge_it {
+	print "Merge is not implemented yet :-(\n";
+}
+
+sub save_it {
+	print "Save is not implemented yet :-(\n";
+}
+
+sub cook_m3u_header {
+	"#EXTM3U\n\n";
+}
+
+sub get_quality_url_key {
+	my $quality = shift;
+
+	return '720p' if $quality eq $QUALITY_HD;
+	return '480p' if $quality eq $QUALITY_SD;
+	return '360p' if $quality eq $QUALITY_LO;
+
+	die "Unexpected quality";
+}
+
+sub cook_m3u_item {
+	my $video = $session->{'videos'}->[shift];
+
+	sprintf "#EXTINF:%.2f, До///дь - %s\n%s\n\n",
+		$video->{'duration'} / 1000,
+		$video->{'name'},
+		$video->{'mp4'}->{get_quality_url_key $options->{'quality'}};
+}
+
+sub cook_m3u_footer {
+	'';
+}
+
+sub playlist_it {
+	my $buffer = '';
+
+	$buffer .= &cook_m3u_header;
+
+	for (my $i = 0 ; $i < scalar @{$session->{'videos'}}; $i++) {
+		$buffer .= cook_m3u_item $i;
+	}
+
+	$buffer .= &cook_m3u_footer;
+
+	debug 'playlist', $buffer if $options->{'verbose'};
+
+	open PLS, "> $session->{'output_path'}" or die "Can not open output file to write $session->{'output_path'}";
+	print PLS $buffer or die "Can not write to output file $session->{'output_path'}";
+	close PLS;
+}
+
 sub main {
 	&read_command_line_options;
 	&deal_with_help_requests;
@@ -746,10 +889,17 @@ sub main {
 	&link_if_not_linked;
 	&get_me_to_check_auth;
 	&get_videos;
+	&decide_on_output_path;
+
+	&merge_it if $options->{'command'} eq $COMMAND_MERGE;
+
+	&save_it if $options->{'command'} eq $COMMAND_SAVE;
+
+	&playlist_it if $options->{'command'} eq $COMMAND_PLAYLIST;
+
 }
 
 
 ### Main
 
 &main;
-
