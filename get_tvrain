@@ -149,7 +149,18 @@ our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
 our $QUALITY_LO = 'lo';
 # TODO: Implement proper file name length check
-our $MAXLENGTH = 127; # 255; 
+our $MAXLENGTH = 48; # 255; 
+our @WGET_ERRORS = (
+	'No problems occurred',
+	'Generic error code',
+	'Parse error—for instance, when parsing command-line options, the ".wgetrc" or ".netrc"',
+	'File I/O error',
+	'Network failure',
+	'SSL verification failure',
+	'Username/password authentication failure',
+	'Protocol errors',
+	'Server issued an error response',
+);
 
 
 ### Globals
@@ -173,6 +184,7 @@ $options = {
 	'help'				=> 0,
 	'long_help'		=> 0,
 	'verbose'			=> 0,
+	'simulate'		=> 0,
 	'first_run'		=> 0,
 	'command'			=> $COMMAND_MERGE,
 	'quality'			=> $QUALITY_HD,
@@ -552,6 +564,7 @@ sub read_command_line_options {
 		'help|h',
 		'long_help|long-help',
 		'verbose|v',
+		'simulate|S',
 		'first_run|first-run|F',
 		'command|c=s',
 		'quality|q=s',
@@ -825,18 +838,6 @@ sub decide_on_output_path {
 	debug 'output path', $session->{'output_path'} if $options->{'verbose'};
 }
 
-sub merge_it {
-	print "Merge is not implemented yet :-(\n";
-}
-
-sub save_it {
-	print "Save is not implemented yet :-(\n";
-}
-
-sub cook_m3u_header {
-	"#EXTM3U\n\n";
-}
-
 sub get_quality_url_key {
 	my $quality = shift;
 
@@ -845,6 +846,106 @@ sub get_quality_url_key {
 	return '360p' if $quality eq $QUALITY_LO;
 
 	die "Unexpected quality";
+}
+
+sub clean_string_for_backticks {
+	$_ = shift;
+	s/'/'\\''/g;
+	$_;
+}
+
+sub get_wget_error {
+	my $wget_exit_code = shift;
+
+	return $WGET_ERRORS[$wget_exit_code] if defined $WGET_ERRORS[$wget_exit_code];
+
+	return 'Unrecognized error';
+}
+
+sub download_url_to_path {
+	my $url = shift;
+	my $output_path = shift;
+
+	my $wget_call = "wget -O '" . clean_string_for_backticks($output_path) . "' '" . clean_string_for_backticks($url) . "'";
+
+	debug 'wget call', $wget_call if $options->{'verbose'};
+
+	`$wget_call` unless $options->{'simulate'};
+	my $wget_exit_code = $?>> 8;
+	die "Wget failed: " . get_wget_error $wget_exit_code if $wget_exit_code;
+}
+
+sub cook_temp_video_path {
+	my $url = shift;
+
+	$url =~ /\/([^\/]*)$/;
+
+	$session->{'temp_dir'} . '/tvrain-' . &cook_rand_xxxx . '-' . $1;
+}
+
+sub download_temp_video {
+	my $video = $session->{'videos'}->[shift];
+
+	my $url = $video->{'mp4'}->{get_quality_url_key $options->{'quality'}};
+	my $temp_video_path = cook_temp_video_path $url;
+
+	download_url_to_path $url, $temp_video_path;
+
+	$temp_video_path;
+}
+
+sub download_temp_videos {
+	my @temp_videos;
+
+	for (my $i = 0 ; $i < scalar @{$session->{'videos'}}; $i++) {
+		push @temp_videos, download_temp_video $i;
+	}
+
+	$session->{'temp_videos'} = \@temp_videos;
+}
+
+sub merge_temp_videos {
+	my $mkvmerge_call = 'mkvmerge -v ';
+
+	$mkvmerge_call .= "-o '" . clean_string_for_backticks($session->{'output_path'}) . "' ";
+
+	my $put_a_plus = 0;
+	for (my $i = 0 ; $i < scalar @{$session->{'temp_videos'}}; $i++) {
+		$mkvmerge_call .= '+' if $put_a_plus;
+		$mkvmerge_call .= "'" . clean_string_for_backticks($session->{'temp_videos'}->[$i]) . "' ";
+
+		$put_a_plus = 1;
+	}
+
+	debug 'mkvmerge call', $mkvmerge_call if $options->{'verbose'};
+
+	`$mkvmerge_call` unless $options->{'simulate'};
+	my $mkvmerge_exit_code = $?>> 8;
+	die "mkvmerge failed" if $mkvmerge_exit_code > 1;
+}
+
+sub delete_temp_videos {
+	return if $options->{'simulate'};
+
+	for (my $i = 0 ; $i < scalar @{$session->{'temp_videos'}}; $i++) {
+		unlink $session->{'temp_videos'}->[$i] or warn "Can not delete temporary video $session->{'temp_videos'}->[$i]";
+	}
+}
+
+sub merge_it {
+	&download_temp_videos;
+	&merge_temp_videos;
+	&delete_temp_videos;
+
+	print "$session->{'output_path'}\n";
+}
+
+sub save_it {
+	print "Save is not implemented yet :-(\n";
+}
+
+sub cook_m3u_header {
+	"#EXTM3U\n\n";
 }
 
 sub cook_m3u_item {
