@@ -3,9 +3,10 @@
 WARNING! This project is very much a work in progress. Please come later :-)
 ```
 Usage:
-  get_tvrain [-h|--long-help] [-v] [-F] [-c <merge|save|pls>] [-q <hd|sd|lo>] 
-             [-d <output dir>] [-o <output file name>] [-t <temp dir>] 
-             [-i] [-y] [-C <config file>] <Video ID | Page with video URL> 
+  get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls>] 
+             [-q <hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
+             [-t <temp dir>] [-i] [-C <config file>] 
+             <Video ID | Page with video URL> 
 
 TVRain.ru show archive command line client. Legitimate paying users only! 
 
@@ -19,6 +20,7 @@ Options:
   -h Show usage and exit
   -v Verbose output, prints a lot of debugging stuff to STDERR
   -F Force first run, resets all options, see below
+  -S Simulate, do not actualy download anything
   -c Command, instructs get_tvrain what to do:
        merge - downloads all parts of the video and merges them into one 
                matroska file, requires temp directory for downloaded parts, 
@@ -37,8 +39,6 @@ Options:
      the "merge" command, if omitted looks up temp_dir in the configuration 
      file, which defaults to the current directory
   -i Use video ID for the file(s) name
-  -y Override output file(s) in case of naming conflict, if not specified 
-     file name(s) will be changed to avoid overwriting
   -C Use specified configuration file instead of the default one
 
 Examples:
