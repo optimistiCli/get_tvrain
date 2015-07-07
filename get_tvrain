@@ -7,6 +7,18 @@
 use utf8;
 use strict;
 
+### TODOs:
+###  1. Use ffmpeg or avconv instaed if mkvmerge, whatever is present in the system
+###  2. Add config and command line options to set merger
+###  3. Gracefully check for perl dependencies, probably auto-install them or create Makefile.PL
+###  4. Add config option for output dir
+###  5. Add command to list videos
+###  6. Check for wget presence and revert to playlist if it is absent
+###  7. Check for the merger presence and revert to save if it is absent
+###  8. Switch to curl
+###  9. Command to download latest full program by name
+### 10. Use OS-ondepenadant path handling
+
 our $usage = 'Usage:
   get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls>] 
              [-q <hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
@@ -940,8 +952,37 @@ sub merge_it {
 	print "$session->{'output_path'}\n";
 }
 
+sub download_video_to_save {
+	my $number = shift;
+
+	my $video = $session->{'videos'}->[$number];
+
+	my $url = $video->{'mp4'}->{get_quality_url_key $options->{'quality'}};
+
+	$session->{'output_path'} =~ /^(.*\/)([^\/]+)$/;
+	my $save_to_path = sprintf '%s%02i-%s', $1, $number + 1, $2;
+
+	download_url_to_path $url, $save_to_path;
+}
+
+sub save_several_videos {
+	for (my $i = 0 ; $i < scalar @{$session->{'videos'}}; $i++) {
+		download_video_to_save $i;
+	}
+}
+
+sub save_one_video {
+	my $video = $session->{'videos'}->[0];
+
+	my $url = $video->{'mp4'}->{get_quality_url_key $options->{'quality'}};
+
+	download_url_to_path $url, $session->{'output_path'};
+}
+
 sub save_it {
-	print "Save is not implemented yet :-(\n";
+	scalar @{$session->{'videos'}} == 1
+		? &save_one_video
+		: &save_several_videos;
 }
 
 sub cook_m3u_header {
