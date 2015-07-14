@@ -18,6 +18,8 @@ use strict;
 ###  8. Switch to curl
 ###  9. Command to download latest full program by name
 ### 10. Use OS-ondepenadant path handling
+### 11. Implement 2-level verbosity with no operational output on base level.
+### 12. Implement proper file name cooking, length, compatibility, break on whitespace and all
 
 our $usage = 'Usage:
   get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls>] 
@@ -161,7 +163,6 @@ our $COMMAND_PLAYLIST = 'pls';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
 our $QUALITY_LO = 'lo';
-# TODO: Implement proper file name length check
 our $MAXLENGTH = 48; # 255; 
 our @WGET_ERRORS = (
 	'No problems occurred',
@@ -185,29 +186,7 @@ our $session;	# Session-wide values
 # TODO: Integrate following into session
 our $cgi_utils;
 our $user_agent;
-our $video_id;
 
-### Init
-
-$cgi_utils = CGI::Utils->new;
-$user_agent = LWP::UserAgent->new;
-
-# Set options defaults
-$options = {
-	'help'				=> 0,
-	'long_help'		=> 0,
-	'verbose'			=> 0,
-	'simulate'		=> 0,
-	'first_run'		=> 0,
-	'command'			=> $COMMAND_MERGE,
-	'quality'			=> $QUALITY_HD,
-	'output_dir'	=> undef,
-	'output_file'	=> undef,
-	'temp_dir'		=> undef,
-	'id'					=> 0,
-	'yes-all'			=> 0,
-	'config'			=> undef,
-};
 
 ### Functions
 
@@ -255,7 +234,6 @@ sub dumpit {
 	return $buffer;
 }
 
-# TODO: Implement 2-level verbosity with no operational output on base level.
 sub debug {
 	my $title = shift;
 	my $text = shift;
@@ -277,6 +255,29 @@ sub brag_and_exit {
 
 	print $err_message, $usage, "\n";
 	exit $exit_code;
+}
+
+sub init {
+	$cgi_utils = CGI::Utils->new;
+	$user_agent = LWP::UserAgent->new;
+}
+
+sub set_options_defaults {
+	$options = {
+		'help'				=> 0,
+		'long_help'		=> 0,
+		'verbose'			=> 0,
+		'simulate'		=> 0,
+		'first_run'		=> 0,
+		'command'			=> $COMMAND_MERGE,
+		'quality'			=> $QUALITY_HD,
+		'output_dir'	=> undef,
+		'output_file'	=> undef,
+		'temp_dir'		=> undef,
+		'id'					=> 0,
+		'yes-all'			=> 0,
+		'config'			=> undef,
+	};
 }
 
 # Creates an empty file and immediately deletes it
@@ -1032,6 +1033,8 @@ sub playlist_it {
 }
 
 sub main {
+	&init;
+	&set_options_defaults;
 	&read_command_line_options;
 	&deal_with_help_requests;
 	&interpret_command_line_options;
