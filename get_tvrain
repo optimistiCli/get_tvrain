@@ -144,6 +144,7 @@ use MIME::Base64 qw(encode_base64);
 use Getopt::Long qw(:config no_ignore_case require_order bundling);
 use IO::Scalar;
 use Cwd qw(realpath);
+use IPC::Run3;
 
 
 ### Constants
@@ -878,11 +879,16 @@ sub download_url_to_path {
 	my $url = shift;
 	my $output_path = shift;
 
-	my $wget_call = "wget -O '" . clean_string_for_backticks($output_path) . "' '" . clean_string_for_backticks($url) . "'";
+	my $wget_call = [
+		'wget',
+		'-O',
+		$output_path,
+		$url,
+	];
 
-	debug 'wget call', $wget_call if $options->{'verbose'};
+	debug 'wget call', join "\n", @$wget_call if $options->{'verbose'};
 
-	`$wget_call` unless $options->{'simulate'};
+	run3 $wget_call unless $options->{'simulate'};
 	my $wget_exit_code = $?>> 8;
 	die "Wget failed: " . get_wget_error $wget_exit_code if $wget_exit_code;
 }
@@ -917,21 +923,26 @@ sub download_temp_videos {
 }
 
 sub merge_temp_videos {
-	my $mkvmerge_call = 'mkvmerge -v ';
+	my $mkvmerge_call = ['mkvmerge'];
 
-	$mkvmerge_call .= "-o '" . clean_string_for_backticks($session->{'output_path'}) . "' ";
+	push @$mkvmerge_call, '-o', $session->{'output_path'};
 
 	my $put_a_plus = 0;
 	for (my $i = 0 ; $i < scalar @{$session->{'temp_videos'}}; $i++) {
-		$mkvmerge_call .= '+' if $put_a_plus;
-		$mkvmerge_call .= "'" . clean_string_for_backticks($session->{'temp_videos'}->[$i]) . "' ";
+		my $buffer = $put_a_plus
+			? '+'
+			: '';
+
+		$buffer .= $session->{'temp_videos'}->[$i];
+
+		push @$mkvmerge_call, $buffer;
 
 		$put_a_plus = 1;
 	}
 
-	debug 'mkvmerge call', $mkvmerge_call if $options->{'verbose'};
+	debug 'mkvmerge call', join "\n", @$mkvmerge_call if $options->{'verbose'};
 
-	`$mkvmerge_call` unless $options->{'simulate'};
+	run3 $mkvmerge_call unless $options->{'simulate'};
 	my $mkvmerge_exit_code = $?>> 8;
 	die "mkvmerge failed" if $mkvmerge_exit_code > 1;
 }
