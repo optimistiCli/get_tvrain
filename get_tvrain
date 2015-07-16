@@ -782,13 +782,25 @@ sub get_common_name {
 	for (my $i = 0; $i < scalar @{$session->{'videos'}}; $i++) {
 		$_ = $session->{'videos'}->[$i]->{'name'};
 
+		s/\s+/ /g;
+
 		# If the name is not prceded with smth like 1/3 there is no common name
 		return undef unless /^\d+\W\d+\s+(.*)$/;
+		my $challenge = $1;
 
-		$common ||= $1;
+		$common ||= $challenge;
 
-		# If the part of the name that follows numbers is differernt from fule to file then there is no common name
-		return undef unless $1 eq $common;
+		next if $challenge eq $common;
+
+		# Update common if it is merely a shorter version of challenge
+		$common = $challenge and next if $challenge =~ /^\Q$common\E/;
+
+		# Ignore challenge if it is just a shorter version of common	
+		next if $common =~ /^\Q$challenge\E/;
+
+		# Video fragment names are significantly different so we give up
+		# TODO: Cancatenete significantly different names
+		return undef;
 	}
 
 	return $common;
