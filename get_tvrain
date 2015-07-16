@@ -147,6 +147,8 @@ use Getopt::Long qw(:config no_ignore_case require_order bundling);
 use IO::Scalar;
 use Cwd qw(realpath);
 use IPC::Run3;
+use WWW::Curl::Easy;
+use WWW::Curl::Form;
 
 
 ### Constants
@@ -156,6 +158,8 @@ our $DEVICE_NAME = 'NothingBut Client'; #'optimistiCli';
 our $URL_BASE = 'https://api.tvrain.ru/api_v2';
 our $API_CONSUMER_KEY = 'a908545f-80af-4f99-8dac-fb012cec';
 our $API_VERSION = '2.13';
+our $METHOD_POST = 'POST';
+our $METHOD_GET = 'GET';
 our $LINK_POLL_TIMEOUT_SEC=15;
 our $COMMAND_MERGE = 'merge';
 our $COMMAND_SAVE = 'save';
@@ -186,6 +190,7 @@ our $session;	# Session-wide values
 # TODO: Integrate following into session
 our $cgi_utils;
 our $user_agent;
+our $curl;
 
 
 ### Functions
@@ -260,6 +265,7 @@ sub brag_and_exit {
 sub init {
 	$cgi_utils = CGI::Utils->new;
 	$user_agent = LWP::UserAgent->new;
+	$curl = WWW::Curl::Easy->new;
 }
 
 sub set_options_defaults {
@@ -431,7 +437,7 @@ sub cook_device_uid {
 sub cook_quickauth_request {
 	{
 		'name'					=> 'quickauth',
-		'method'				=> 'POST',
+		'method'				=> $METHOD_POST,
 		'url'						=> "$URL_BASE/user/quickauth/",
 		'post_params'		=> {
 			'device_uid'		=> $config->{_}->{'device_uid'},
@@ -446,7 +452,7 @@ sub cook_quickauth_request {
 sub cook_startlinking_request {
 	{
 		'name'					=> 'startlinking',
-		'method'				=> 'POST',
+		'method'				=> $METHOD_POST,
 		'url'						=> "$URL_BASE/user/startlinking/",
 		'post_params'		=> {
 		},
@@ -462,7 +468,7 @@ sub cook_link_request {
 
 	{
 		'name'						=> 'link',
-		'method'					=> 'POST',
+		'method'					=> $METHOD_POST,
 		'url'							=> "$URL_BASE/user/link/",
 		'post_params'			=> {
 			'device_uid'			=> $config->{_}->{'device_uid'},
@@ -481,7 +487,7 @@ sub cook_link_request {
 sub cook_me_request {
 	{
 		'name'						=> 'me',
-		'method'					=> 'GET',
+		'method'					=> $METHOD_GET,
 		'url'							=> "$URL_BASE/user/me/",
 		'post_params'			=> {
 		},
@@ -500,7 +506,7 @@ sub cook_videos_request {
 
 	{
 		'name'						=> 'videos',
-		'method'					=> 'GET',
+		'method'					=> $METHOD_GET,
 		'url'							=> "$URL_BASE/articles/$video_id/videos/",
 		'post_params'			=> {
 		},
@@ -526,6 +532,61 @@ sub cook_auth {
 }
 
 sub call_api {
+	my $api_request = shift;
+
+	# URL
+	$curl->setopt(CURLOPT_URL, $api_request->{'url'});
+
+	# HEADERS
+	my $headers = [
+		'X-User-Agent',	"$DEVICE_NAME; API_CONSUMER_KEY=$API_CONSUMER_KEY",
+		'Accept',				"application/tvrain.api.$API_VERSION+json",
+		'Content-Type',	'application/x-www-form-urlencoded',
+	];
+
+	foreach my $header (keys %{$api_request->{'extra_headers'}}) {
+		push @$headers, $header, $api_request->{'extra_headers'}->{$header};
+	}
+
+	$curl->setopt(CURLOPT_HTTPHEADER, \@authHeader);
+
+	# POST PARAMS
+	if ($api_request->{'method'} eq $METHOD_POST) {
+		$curl->setopt(CURLOPT_POST, 1);
+
+		if (scalar keys %{$api_request->{'post_params'}}) {
+			my $curlf = WWW::Curl::Form->new;
+
+			foreach my $post_param (keys %{$api_request->{'post_params'}}) {
+				$curlf->formadd($post_param, $api_request->{'post_params'}->{$post_param});
+			}
+
+			$curl->setopt(CURLOPT_HTTPPOST, $curlf);
+		}
+	}
+
+	# TODO: get request from curl
+	# debug 'request', ????? if $options->{'verbose'};
+
+	my $response = $user_agent->request($request);
+
+	if ($response->is_success) {
+		debug 'response', $response->content if $options->{'verbose'};
+
+		return decode_json $response->content;
+	} else {
+		if (defined $api_request->{'error_overrides'}->{$response->code}) {
+			debug 'response', 'Executing error override for HTTP return code ' . $response->code if $options->{'verbose'};
+
+			return $api_request->{'error_overrides'}->{$response->code};
+		} else {
+			die "Error processing “$api_request->{'name'}” API call: " . $response->status_line;
+		}
+	}
+}
+
+
+sub call_api_lwp_useragent {
 	my $api_request = shift;
 
 	# TODO: Try implementing via $user_agent->default_headers
