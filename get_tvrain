@@ -130,7 +130,6 @@ For more details please run:
 get_tvran --long-help
 ';
 
-
 use open IO  => ":encoding(utf8)";
 binmode STDOUT, ":utf8";
 binmode STDERR, ":utf8";
@@ -145,6 +144,7 @@ our $REQUIRED_MODULES = [
 	'HTTP::Request',
 	'CGI::Utils',
 	'LWP::UserAgent',
+	'LWP::Protocol::https',
 	'JSON',
 	'MIME::Base64',
 	'Getopt::Long',
@@ -187,6 +187,7 @@ our $session;	# Session-wide values
 # TODO: Integrate following into session
 our $cgi_utils;
 our $user_agent;
+our $json;
 
 
 ### Functions
@@ -245,17 +246,17 @@ sub debug {
 }
 
 sub brag_and_exit {
-	my $err_message = shift;
+	my $error_message = shift;
 	my $exit_code = shift;
 
-	if ($err_message) {
-		chomp $err_message;
-		$err_message =~ s/^/  /gms;
-		$err_message = "Error:\n$err_message\n\n";
+	if ($error_message) {
+		chomp $error_message;
+		$error_message =~ s/^/  /gms;
+		$error_message = "Error:\n$error_message\n\n";
 		$exit_code = 1 unless $exit_code;
 	}
 
-	print $err_message, $usage, "\n";
+	print $error_message, $usage, "\n";
 	exit $exit_code;
 }
 
@@ -269,32 +270,48 @@ sub guess_if_verbose {
 	}
 }
 
+sub cook_missing_modules_error_message {
+	my $missing_modules = shift;
+
+	return unless scalar @$missing_modules;
+
+	my $pre_module = "sudo perl -MCPAN -e 'install +";
+	my $post_module = "'";
+
+	my $missing_modules_error_matrix = sprintf 'One or more required perl modules are missing. They can be installed off CPAN 
+by running something like this:
+>=== CODE ===<
+%s%%s%s
+>=== CODE ===<', 
+	$pre_module, $post_module;
+
+	sprintf $missing_modules_error_matrix, join "$post_module\n$pre_module", @$missing_modules;
+}
+
 sub check_modules {
 	my $installed_modules = [];
 	my $missing_modules = [];
 
-
 	foreach my $module (@$REQUIRED_MODULES ) {
-		print $module, "\n";
-	
 		my $stack = eval("require $module;")
 			? $installed_modules
 			: $missing_modules;
-	
+
 		push @$stack, $module;
 	}
 
 	debug 'installed modules', join "\n", @$installed_modules if $options->{'verbose'};
 	debug 'missing modules', join "\n", @$missing_modules if $options->{'verbose'};
 
-	# TODO: Print proper error messge
-	brag_and_exit 'Some modules are missing' if scalar @$missing_modules;
+	brag_and_exit cook_missing_modules_error_message $missing_modules if scalar @$missing_modules;
 }
 
 sub init {
-	Getopt::Long::Configure ('no_ignore_case require_order bundling');
+	Getopt::Long::Configure ('no_ignore_case', 'require_order', 'bundling');
+
 	$cgi_utils = CGI::Utils->new;
 	$user_agent = LWP::UserAgent->new;
+	$json = JSON->new;
 }
 
 sub set_options_defaults {
@@ -593,7 +610,7 @@ sub call_api {
 	if ($response->is_success) {
 		debug 'response', $response->content if $options->{'verbose'};
 
-		return decode_json $response->content;
+		return $json->utf8->decode($response->content);
 	} else {
 		if (defined $api_request->{'error_overrides'}->{$response->code}) {
 			debug 'response', 'Executing error override for HTTP return code ' . $response->code if $options->{'verbose'};
@@ -609,7 +626,7 @@ sub read_command_line_options {
 	my $error_message;
 	my $error = tie *STDERR, 'IO::Scalar', \$error_message;
 
-	my $all_went_well = GetOptions ($options, 
+	my $all_went_well = Getopt::Long::GetOptions ($options, 
 		'help|h',
 		'long_help|long-help',
 		'verbose|v',
@@ -938,7 +955,7 @@ sub download_url_to_path {
 
 	debug 'wget call', join "\n", @$wget_call if $options->{'verbose'};
 
-	run3 $wget_call unless $options->{'simulate'};
+	IPC::Run3::run3($wget_call) unless $options->{'simulate'};
 	my $wget_exit_code = $?>> 8;
 	die "Wget failed: " . get_wget_error $wget_exit_code if $wget_exit_code;
 }
@@ -1010,7 +1027,7 @@ sub merge_temp_videos_ffmpeg {
 
 	debug 'ffmpeg call', join "\n", @$ffmpeg_call if $options->{'verbose'};
 
-	run3 $ffmpeg_call unless $options->{'simulate'};
+	IPC::Run3::run3($ffmpeg_call) unless $options->{'simulate'};
 	my $ffmpeg_exit_code = $?>> 8;
 	die "ffmpeg failed" if $ffmpeg_exit_code > 1;
 
@@ -1037,7 +1054,7 @@ sub merge_temp_videos_mkvmerge {
 
 	debug 'mkvmerge call', join "\n", @$mkvmerge_call if $options->{'verbose'};
 
-	run3 $mkvmerge_call unless $options->{'simulate'};
+	IPC::Run3::run3($mkvmerge_call) unless $options->{'simulate'};
 	my $mkvmerge_exit_code = $?>> 8;
 	die "mkvmerge failed" if $mkvmerge_exit_code > 1;
 }
@@ -1129,7 +1146,6 @@ sub playlist_it {
 sub main {
 	&guess_if_verbose;
 	&check_modules;
-exit;
 	&init;
 	&set_options_defaults;
 	&read_command_line_options;
