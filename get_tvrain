@@ -844,6 +844,8 @@ sub cook_file_name {
 	s/[:#\\\/\*]+/./g;
 	s/[\{\<]/[/g;
 	s/[\}\>]/[]/g;
+	s/\"(.*?)\"/«$1»/g; 
+	s/\"//g;
 
 	$_ .= &cook_extension;
 
@@ -936,6 +938,49 @@ sub download_temp_videos {
 }
 
 sub merge_temp_videos {
+	&merge_temp_videos_ffmpeg;
+}
+
+sub cook_ffmpeg_list_file_path {
+	my $ffmpeg_list_file_path = $session->{'temp_dir'} . '/get-tvrain-mux-list-' . $session->{'video_id'} . '-' . &cook_rand_xxxx . '.txt';
+
+	debug 'ffmpeg list file path', $ffmpeg_list_file_path if $options->{'verbose'};
+
+	$ffmpeg_list_file_path;
+}
+
+sub merge_temp_videos_ffmpeg {
+	my $list_file_path = &cook_ffmpeg_list_file_path;
+	open LIST, '>', $list_file_path or die "Can not open ffmpeg list file";
+
+	printf LIST "# Video ID: %s\n", $session->{'video_id'};
+
+	for (my $i = 0 ; $i < scalar @{$session->{'temp_videos'}}; $i++) {
+		printf LIST "file '%s'\n", $session->{'temp_videos'}->[$i];
+	}
+
+	close LIST;
+
+	my $ffmpeg_call = [
+		'ffmpeg',
+		'-f',
+		'concat',
+		'-i',
+		$list_file_path,
+		'-c',
+		$session->{'output_path'},
+	];
+
+	debug 'ffmpeg call', join "\n", @$ffmpeg_call if $options->{'verbose'};
+
+	run3 $ffmpeg_call unless $options->{'simulate'};
+	my $ffmpeg_exit_code = $?>> 8;
+	die "ffmpeg failed" if $ffmpeg_exit_code > 1;
+
+	unlink $list_file_path;
+}
+
+sub merge_temp_videos_mkvmerge {
 	my $mkvmerge_call = ['mkvmerge'];
 
 	push @$mkvmerge_call, '-o', $session->{'output_path'};
