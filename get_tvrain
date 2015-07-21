@@ -135,22 +135,23 @@ use open IO  => ":encoding(utf8)";
 binmode STDOUT, ":utf8";
 binmode STDERR, ":utf8";
 
-use Env qw(HOME);
-use Config::Tiny;
-use HTTP::Headers;
-use HTTP::Request;
-use CGI::Utils;
-use LWP::UserAgent;
-use JSON;
-use MIME::Base64 qw(encode_base64);
-use Getopt::Long qw(:config no_ignore_case require_order bundling);
-use IO::Scalar;
-use Cwd qw(realpath);
-use IPC::Run3;
-
 
 ### Constants
 
+our $REQUIRED_MODULES = [
+	'File::HomeDir',
+	'Config::Tiny',
+	'HTTP::Headers',
+	'HTTP::Request',
+	'CGI::Utils',
+	'LWP::UserAgent',
+	'JSON',
+	'MIME::Base64',
+	'Getopt::Long',
+	'IO::Scalar',
+	'Cwd',
+	'IPC::Run3',
+];
 our $CONFIG_FILE_NAME = '.get_tvrain.conf';
 our $DEVICE_NAME = 'NothingBut Client'; #'optimistiCli';
 our $URL_BASE = 'https://api.tvrain.ru/api_v2';
@@ -191,6 +192,7 @@ our $user_agent;
 ### Functions
 
 sub dumpit;
+sub MIME::Base64::encode_base64;
 
 sub dumpit {
 	my $workload = shift;
@@ -257,7 +259,40 @@ sub brag_and_exit {
 	exit $exit_code;
 }
 
+# Runs before proper options interpreter and tries to establish if user wants to print debug messages
+sub guess_if_verbose {
+	for (my $i = 0; $i < scalar @ARGV; $i++) {
+		next unless $ARGV[$i] =~ /^-.*v/;
+
+		$options->{'verbose'} = 1;
+		return;
+	}
+}
+
+sub check_modules {
+	my $installed_modules = [];
+	my $missing_modules = [];
+
+
+	foreach my $module (@$REQUIRED_MODULES ) {
+		print $module, "\n";
+	
+		my $stack = eval("require $module;")
+			? $installed_modules
+			: $missing_modules;
+	
+		push @$stack, $module;
+	}
+
+	debug 'installed modules', join "\n", @$installed_modules if $options->{'verbose'};
+	debug 'missing modules', join "\n", @$missing_modules if $options->{'verbose'};
+
+	# TODO: Print proper error messge
+	brag_and_exit 'Some modules are missing' if scalar @$missing_modules;
+}
+
 sub init {
+	Getopt::Long::Configure ('no_ignore_case require_order bundling');
 	$cgi_utils = CGI::Utils->new;
 	$user_agent = LWP::UserAgent->new;
 }
@@ -522,7 +557,7 @@ sub cook_auth {
 	my $user_id = shift;
 	my $device_token = shift;
 
-	'Basic ' . encode_base64 "$user_id:$device_token", '';
+	'Basic ' . MIME::Base64::encode_base64 "$user_id:$device_token", '';
 }
 
 sub call_api {
@@ -628,9 +663,9 @@ sub get_video_id {
 }
 
 sub set_config_file_path {
-	$session->{'config_file_path'} = 
-		defined $options->{'config'} ? $options->{'config'} :
-		"$HOME/$CONFIG_FILE_NAME";
+	$session->{'config_file_path'} = 	defined $options->{'config'} 
+		? $options->{'config'}
+		: File::HomeDir->my_home . "/$CONFIG_FILE_NAME";
 
 	debug 'config file path', $session->{'config_file_path'} if $options->{'verbose'};
 }
@@ -685,9 +720,9 @@ sub ask_user_for_deafult_temp_dir {
 		if ($temp_dir eq '') {
 			$temp_dir = '.'
 		} elsif ($temp_dir =~ /^\.{1,2}(?:\/.*)?$/) {
-			$temp_dir = realpath $temp_dir;
+			$temp_dir = Cwd::realpath $temp_dir;
 		} elsif ($temp_dir =~ /^\~(\/.*)?$/) {
-			$temp_dir = "${HOME}$1";
+			$temp_dir = File::HomeDir->my_home . $1;
 		}
 
 		$dir_wrieable_error = get_dir_wrieable_error $temp_dir, 'Default temporary directory';
@@ -938,6 +973,7 @@ sub download_temp_videos {
 }
 
 sub merge_temp_videos {
+	# TODO: make an intelligent decision on which muxer should be used
 	&merge_temp_videos_ffmpeg;
 }
 
@@ -968,6 +1004,7 @@ sub merge_temp_videos_ffmpeg {
 		'-i',
 		$list_file_path,
 		'-c',
+		'copy',
 		$session->{'output_path'},
 	];
 
@@ -1090,6 +1127,9 @@ sub playlist_it {
 }
 
 sub main {
+	&guess_if_verbose;
+	&check_modules;
+exit;
 	&init;
 	&set_options_defaults;
 	&read_command_line_options;
