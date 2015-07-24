@@ -6,6 +6,8 @@
 
 use utf8;
 use strict;
+use open IO  => ":encoding(utf8)";
+
 
 ### TODOs:
 ###  1. Use ffmpeg or avconv instaed if mkvmerge, whatever is present in the system
@@ -130,10 +132,6 @@ For more details please run:
 get_tvran --long-help
 ';
 
-use open IO  => ":encoding(utf8)";
-binmode STDOUT, ":utf8";
-binmode STDERR, ":utf8";
-
 
 ### Constants
 
@@ -176,6 +174,8 @@ our @WGET_ERRORS = (
 	'Protocol errors',
 	'Server issued an error response',
 );
+our $MERGE_WITH_MKVMERGE = 'mkvmerge';
+our $MERGE_WITH_FFMPEG = 'ffmpeg';
 
 
 ### Globals
@@ -194,6 +194,11 @@ our $json;
 
 sub dumpit;
 sub MIME::Base64::encode_base64;
+
+sub set_binmode {
+	binmode STDOUT, ":utf8";
+	binmode STDERR, ":utf8";
+}
 
 sub dumpit {
 	my $workload = shift;
@@ -648,11 +653,59 @@ sub read_command_line_options {
 	brag_and_exit $error_message unless $all_went_well;
 }
 
+sub executable_exist {
+	my $command = [shift];
+
+	eval { IPC::Run3::run3($command, \undef, \undef, \undef,) };
+	my $exists = $? >= 0;
+	undef $?;
+
+	# The run3 call somehow messes utf8 up
+	&set_binmode;
+
+	debug 'executable exist', "$command->[0] → $exists" if $options->{'verbose'};
+
+	$exists;
+}
+
+sub check_dowloader_exec {
+	# TODO: Add wget path to options and config
+	my $wget_exec = 'wget';
+
+	brag_and_exit "Can not find wget. Please check requirements." unless executable_exist $wget_exec;
+
+	$session->{'wget_exec'} = $wget_exec;
+
+	debug 'wget exec', $session->{'wget_exec'} if $options->{'verbose'};
+}
+
+sub check_merge_exec {
+	# TODO: Add mkvmerge and ffmpeg paths to options and config
+	my $mkvmerge_exec = 'mkvmerge';
+	my $ffmpeg_exec = 'ffmpeg';
+
+	if (executable_exist $mkvmerge_exec) {
+		$session->{'merge_with'} = $MERGE_WITH_MKVMERGE;
+	} elsif (executable_exist $ffmpeg_exec) {
+		$session->{'merge_with'} = $MERGE_WITH_FFMPEG;
+	} else {
+		brag_and_exit "Neither mkvmerge nor ffmpeg found. Please check requirements.";
+	}
+
+	debug 'merge with', $session->{'merge_with'} if $options->{'verbose'};
+}
+
+sub decide_on_executables {
+	&check_dowloader_exec;
+	&check_merge_exec;
+}
+
 sub deal_with_help_requests {
 	print $long_help and exit if $options->{'long_help'};
 
 	&brag_and_exit if $options->{'help'};
 }
+
 
 sub interpret_command_line_options {
 	&check_option_command;
@@ -661,6 +714,8 @@ sub interpret_command_line_options {
 	&check_option_output_file;
 	&check_option_temp_dir;
 	&check_option_config;
+
+	debug 'options', dumpit $options if $options->{'verbose'};
 }
 
 sub get_video_id {
@@ -947,7 +1002,7 @@ sub download_url_to_path {
 	my $output_path = shift;
 
 	my $wget_call = [
-		'wget',
+		$session->{'wget_exec'},
 		'-O',
 		$output_path,
 		$url,
@@ -956,7 +1011,9 @@ sub download_url_to_path {
 	debug 'wget call', join "\n", @$wget_call if $options->{'verbose'};
 
 	IPC::Run3::run3($wget_call) unless $options->{'simulate'};
-	my $wget_exit_code = $?>> 8;
+	my $wget_exit_code = $? >> 8;
+	undef $?;
+
 	die "Wget failed: " . get_wget_error $wget_exit_code if $wget_exit_code;
 }
 
@@ -989,11 +1046,6 @@ sub download_temp_videos {
 	$session->{'temp_videos'} = \@temp_videos;
 }
 
-sub merge_temp_videos {
-	# TODO: make an intelligent decision on which muxer should be used
-	&merge_temp_videos_ffmpeg;
-}
-
 sub cook_ffmpeg_list_file_path {
 	my $ffmpeg_list_file_path = $session->{'temp_dir'} . '/get-tvrain-mux-list-' . $session->{'video_id'} . '-' . &cook_rand_xxxx . '.txt';
 
@@ -1002,7 +1054,7 @@ sub cook_ffmpeg_list_file_path {
 	$ffmpeg_list_file_path;
 }
 
-sub merge_temp_videos_ffmpeg {
+sub merge_temp_videos_with_ffmpeg {
 	my $list_file_path = &cook_ffmpeg_list_file_path;
 	open LIST, '>', $list_file_path or die "Can not open ffmpeg list file";
 
@@ -1028,13 +1080,15 @@ sub merge_temp_videos_ffmpeg {
 	debug 'ffmpeg call', join "\n", @$ffmpeg_call if $options->{'verbose'};
 
 	IPC::Run3::run3($ffmpeg_call) unless $options->{'simulate'};
-	my $ffmpeg_exit_code = $?>> 8;
+	my $ffmpeg_exit_code = $? >> 8;
+	undef $?;
+
 	die "ffmpeg failed" if $ffmpeg_exit_code > 1;
 
 	unlink $list_file_path;
 }
 
-sub merge_temp_videos_mkvmerge {
+sub merge_temp_videos_with_mkvmerge {
 	my $mkvmerge_call = ['mkvmerge'];
 
 	push @$mkvmerge_call, '-o', $session->{'output_path'};
@@ -1055,8 +1109,15 @@ sub merge_temp_videos_mkvmerge {
 	debug 'mkvmerge call', join "\n", @$mkvmerge_call if $options->{'verbose'};
 
 	IPC::Run3::run3($mkvmerge_call) unless $options->{'simulate'};
-	my $mkvmerge_exit_code = $?>> 8;
+	my $mkvmerge_exit_code = $? >> 8;
+	undef $?;
+
 	die "mkvmerge failed" if $mkvmerge_exit_code > 1;
+}
+
+sub merge_temp_videos {
+	&merge_temp_videos_with_mkvmerge if $session->{'merge_with'} eq $MERGE_WITH_MKVMERGE;
+	&merge_temp_videos_with_ffmpeg if $session->{'merge_with'} eq $MERGE_WITH_FFMPEG;
 }
 
 sub delete_temp_videos {
@@ -1143,7 +1204,16 @@ sub playlist_it {
 	close PLS;
 }
 
+sub do_the_job {
+	&merge_it if $options->{'command'} eq $COMMAND_MERGE;
+
+	&save_it if $options->{'command'} eq $COMMAND_SAVE;
+
+	&playlist_it if $options->{'command'} eq $COMMAND_PLAYLIST;
+}
+
 sub main {
+	&set_binmode;
 	&guess_if_verbose;
 	&check_modules;
 	&init;
@@ -1151,6 +1221,7 @@ sub main {
 	&read_command_line_options;
 	&deal_with_help_requests;
 	&interpret_command_line_options;
+	&decide_on_executables;
 	&get_video_id;
 	&set_config_file_path;
 	&read_config;
@@ -1159,16 +1230,10 @@ sub main {
 	&get_me_to_check_auth;
 	&get_videos;
 	&decide_on_output_path;
-
-	&merge_it if $options->{'command'} eq $COMMAND_MERGE;
-
-	&save_it if $options->{'command'} eq $COMMAND_SAVE;
-
-	&playlist_it if $options->{'command'} eq $COMMAND_PLAYLIST;
-
+	&do_the_job;
 }
 
 
-### Main
+### Run
 
 &main;
