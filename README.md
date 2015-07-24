@@ -4,9 +4,9 @@ WARNING! This project is very much a work in progress. Please come later :-)
 ```
 Usage:
   get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls>] 
-             [-q <hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
-             [-t <temp dir>] [-i] [-C <config file>] 
-             <Video ID | Page with video URL> 
+  [-q <hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
+  [-t <temp dir>] [-i] [-C <config file>] 
+  <Video ID | Page with video URL> 
 
 TVRain.ru show archive command line client. Legitimate paying users only! 
 
@@ -23,8 +23,8 @@ Options:
   -S Simulate, do not actualy download anything
   -c Command, instructs get_tvrain what to do:
        merge - downloads all parts of the video and merges them into one 
-               matroska file, requires temp directory for downloaded parts, 
-               this is the default command
+    matroska file, requires temp directory for downloaded parts, 
+    this is the default command
        save  - saves each part of the video as is
        pls   - does not download any video, saves a playlist with video URLs
   -q Video quality selector, available options are:
@@ -54,6 +54,12 @@ Examples:
   Create a custom-named playlist of the standard definition videos. If a 
   playlist by the same name already exists overwrite it.
   get_tvrain -q sd -o /mnt/autoplay/tvrain.pls -c pls -y 123456
+
+Requirements:
+  A few perl modules off CPAN are required. If they are missing the program 
+  will let you know which modules it lacks and suggest a way to install them.
+  Also wget is used to download stuff and either mkvmerge or ffmpeg for 
+  joining video fragments.
 
 Configuration file:
   The configuration file is .get_tvrain.conf in your home directory, This file 

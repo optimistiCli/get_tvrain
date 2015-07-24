@@ -10,24 +10,23 @@ use open IO  => ":encoding(utf8)";
 
 
 ### TODOs:
-###  1. Use ffmpeg or avconv instaed if mkvmerge, whatever is present in the system
-###  2. Add config and command line options to set merger
-###  3. Gracefully check for perl dependencies, probably auto-install them or create Makefile.PL
-###  4. Add config option for output dir
-###  5. Add command to list videos
-###  6. Check for wget presence and revert to playlist if it is absent
-###  7. Check for the merger presence and revert to save if it is absent
-###  8. Switch to curl
-###  9. Command to download latest full program by name
-### 10. Use OS-ondepenadant path handling
-### 11. Implement 2-level verbosity with no operational output on base level.
-### 12. Implement proper file name cooking, length, compatibility, break on whitespace and all
+###  1. Add config and command line options to set merger
+###  2. Add config option for output dir
+###  3. Add command to list videos
+###  4. Use curl if there's no wget
+###  5. Command to download latest full program by name
+###  6. Use OS-indepenadant path handling
+###  7. Implement 2-level verbosity with no operational output on base level.
+###  8. Implement proper file name cooking, length, compatibility, break on whitespace and all
+###  9. Add external executable paths to options and config
+### 10. Process a list of video ids, either from command line of from a file
+### 11. Add option to output playlist to STDOUT (-o -)
 
 our $usage = 'Usage:
   get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls>] 
-             [-q <hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
-             [-t <temp dir>] [-i] [-C <config file>] 
-             <Video ID | Page with video URL> 
+  [-q <hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
+  [-t <temp dir>] [-i] [-C <config file>] 
+  <Video ID | Page with video URL> 
 
 TVRain.ru show archive command line client. Legitimate paying users only! 
 
@@ -46,8 +45,8 @@ Options:
   -S Simulate, do not actualy download anything
   -c Command, instructs get_tvrain what to do:
        merge - downloads all parts of the video and merges them into one 
-               matroska file, requires temp directory for downloaded parts, 
-               this is the default command
+    matroska file, requires temp directory for downloaded parts, 
+    this is the default command
        save  - saves each part of the video as is
        pls   - does not download any video, saves a playlist with video URLs
   -q Video quality selector, available options are:
@@ -77,6 +76,12 @@ Examples:
   Create a custom-named playlist of the standard definition videos. If a 
   playlist by the same name already exists overwrite it.
   get_tvrain -q sd -o /mnt/autoplay/tvrain.pls -c pls -y 123456
+
+Requirements:
+  A few perl modules off CPAN are required. If they are missing the program 
+  will let you know which modules it lacks and suggest a way to install them.
+  Also wget is used to download stuff and either mkvmerge or ffmpeg for 
+  joining video fragments.
 
 Configuration file:
   The configuration file is .get_tvrain.conf in your home directory, This file 
@@ -184,7 +189,7 @@ our $options;	# Command line options
 our $config;	# Config file values
 our $session;	# Session-wide values
 
-# TODO: Integrate following into session
+# TODO: Move objects into session
 our $cgi_utils;
 our $user_agent;
 our $json;
@@ -669,7 +674,6 @@ sub executable_exist {
 }
 
 sub check_dowloader_exec {
-	# TODO: Add wget path to options and config
 	my $wget_exec = 'wget';
 
 	brag_and_exit "Can not find wget. Please check requirements." unless executable_exist $wget_exec;
@@ -680,7 +684,6 @@ sub check_dowloader_exec {
 }
 
 sub check_merge_exec {
-	# TODO: Add mkvmerge and ffmpeg paths to options and config
 	my $mkvmerge_exec = 'mkvmerge';
 	my $ffmpeg_exec = 'ffmpeg';
 
