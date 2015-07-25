@@ -289,8 +289,8 @@ sub cook_missing_modules_error_message {
 	my $pre_module = "sudo perl -MCPAN -e 'install +";
 	my $post_module = "'";
 
-	my $missing_modules_error_matrix = sprintf 'One or more required perl modules are missing. They can be installed off CPAN 
-by running something like this:
+	my $missing_modules_error_matrix = sprintf 'One or more required perl modules are missing. On many sane systems (not on 
+cygwin) They can be installed off CPAN by running something like this:
 >=== CODE ===<
 %s%%s%s
 >=== CODE ===<', 
