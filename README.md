@@ -1,6 +1,4 @@
 # get_tvrain
-
-WARNING! This project is very much a work in progress. Please come later :-)
 ```
 Usage:
   get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls>] 
