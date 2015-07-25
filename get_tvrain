@@ -148,6 +148,7 @@ our $REQUIRED_MODULES = [
 	'CGI::Utils',
 	'LWP::UserAgent',
 	'LWP::Protocol::https',
+	'Mozilla::CA',
 	'JSON',
 	'MIME::Base64',
 	'Getopt::Long',
@@ -884,6 +885,8 @@ sub get_videos {
 	$session->{'videos'} = $videos_response;
 
 	debug 'videos', dumpit $session->{'videos'} if $options->{'verbose'};
+
+	brag_and_exit 'No video in the article id ' . $session->{'video_id'} unless defined $session->{'videos'}->[0]->{'mp4'};
 }
 
 sub get_common_name {
