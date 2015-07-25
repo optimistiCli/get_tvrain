@@ -940,7 +940,7 @@ sub fit_file_name_length {
 sub cook_file_name {
 	local $_;
 
-	$_ = $session->{'video_id'} if $config->{_}->{'id'};
+	$_ = $session->{'video_id'} if $options->{'id'};
 
 	$_ ||= &get_common_name;
 
