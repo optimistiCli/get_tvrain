@@ -156,7 +156,7 @@ our $REQUIRED_MODULES = [
 	'IPC::Run3',
 ];
 our $CONFIG_FILE_NAME = '.get_tvrain.conf';
-our $DEVICE_NAME = 'NothingBut Client'; #'optimistiCli';
+our $DEVICE_NAME = 'optimistiCli';
 our $URL_BASE = 'https://api.tvrain.ru/api_v2';
 our $API_CONSUMER_KEY = 'a908545f-80af-4f99-8dac-fb012cec';
 our $API_VERSION = '2.13';
@@ -167,7 +167,7 @@ our $COMMAND_PLAYLIST = 'pls';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
 our $QUALITY_LO = 'lo';
-our $MAXLENGTH = 48; # 255; 
+our $MAXLENGTH = 48;
 our @WGET_ERRORS = (
 	'No problems occurred',
 	'Generic error code',
