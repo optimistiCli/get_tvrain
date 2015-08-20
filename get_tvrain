@@ -959,6 +959,7 @@ sub cook_file_name {
 	s/[\}\>]/[]/g;
 	s/\"(.*?)\"/«$1»/g; 
 	s/\"//g;
+	s/\?+/⁇/g;
 
 	$_ .= &cook_extension;
 
