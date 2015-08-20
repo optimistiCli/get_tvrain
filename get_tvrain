@@ -45,8 +45,8 @@ Options:
   -S Simulate, do not actualy download anything
   -c Command, instructs get_tvrain what to do:
        merge - downloads all parts of the video and merges them into one 
-    matroska file, requires temp directory for downloaded parts, 
-    this is the default command
+               matroska file, requires temp directory for downloaded parts, 
+               this is the default command
        save  - saves each part of the video as is
        pls   - does not download any video, saves a playlist with video URLs
   -q Video quality selector, available options are:
@@ -1032,10 +1032,25 @@ sub cook_temp_video_path {
 	$session->{'temp_dir'} . '/tvrain-' . &cook_rand_xxxx . '-' . $1;
 }
 
+sub cook_no_quality_error_message {
+	my $quality = shift;
+
+	my $quality_string = 
+		$quality eq $QUALITY_HD ? 'high definition' :
+		$quality eq $QUALITY_SD ? 'standard definition' :
+		$quality eq $QUALITY_LO ? 'low bitrate' :
+		'requested quality';
+
+	"The $quality_string video is not available";
+}
+
 sub download_temp_video {
 	my $video = $session->{'videos'}->[shift];
 
 	my $url = $video->{'mp4'}->{get_quality_url_key $options->{'quality'}};
+
+	brag_and_exit cook_no_quality_error_message $options->{'quality'} unless $url;
+
 	my $temp_video_path = cook_temp_video_path $url;
 
 	download_url_to_path $url, $temp_video_path;
