@@ -1027,9 +1027,12 @@ sub download_url_to_path {
 sub cook_temp_video_path {
 	my $url = shift;
 
-	$url =~ /\/([^\/]*)$/;
+	$url =~ /\/([^\/\?]+)[^\/]*$/;
 
-	$session->{'temp_dir'} . '/tvrain-' . &cook_rand_xxxx . '-' . $1;
+	my $remote_file_name = $1;
+	$remote_file_name ||= 'video.mp4';
+
+	$session->{'temp_dir'} . '/tvrain-' . &cook_rand_xxxx . '-' . $remote_file_name;
 }
 
 sub cook_no_quality_error_message {
