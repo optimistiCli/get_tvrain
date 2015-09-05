@@ -50,9 +50,10 @@ Options:
        save  - saves each part of the video as is
        pls   - does not download any video, saves a playlist with video URLs
   -q Video quality selector, available options are:
-       hd - high definition aka 720p (default)
-       sd - standard definition aka 480p
-       lo - low bitrate aka 360p
+       fhd - full HD aka 1080p
+       hd  - high definition aka 720p (default)
+       sd  - standard definition aka 480p
+       lo  - low bitrate aka 360p
   -d Write output file(s) to the specified directory, defaults to current 
      directory
   -o Set output file(s) name, if omitted the article / feature name is used 
@@ -165,6 +166,7 @@ our $LINK_POLL_TIMEOUT_SEC=15;
 our $COMMAND_MERGE = 'merge';
 our $COMMAND_SAVE = 'save';
 our $COMMAND_PLAYLIST = 'pls';
+our $QUALITY_FH = 'fh';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
 our $QUALITY_LO = 'lo';
@@ -402,6 +404,7 @@ sub check_option_quality {
 	$_ = $options->{'quality'};
 
 	$options->{'quality'} = 
+		/^f|fh|fhd|full.*|1080|1080p$/i ? $QUALITY_FH :
 		/^h|hd|hq|high|hi|720|720p$/i ? $QUALITY_HD :
 		/^s|sd|sq|stand.*|std|480|480p$/i ? $QUALITY_SD :
 		/^l|lo|ld|lq|lo|low|360|360p$/i ? $QUALITY_LO :
@@ -983,6 +986,7 @@ sub decide_on_output_path {
 sub get_quality_url_key {
 	my $quality = shift;
 
+	return '1080p' if $quality eq $QUALITY_FH;
 	return '720p' if $quality eq $QUALITY_HD;
 	return '480p' if $quality eq $QUALITY_SD;
 	return '360p' if $quality eq $QUALITY_LO;
@@ -1039,6 +1043,7 @@ sub cook_no_quality_error_message {
 	my $quality = shift;
 
 	my $quality_string = 
+		$quality eq $QUALITY_FH ? 'full hd' :
 		$quality eq $QUALITY_HD ? 'high definition' :
 		$quality eq $QUALITY_SD ? 'standard definition' :
 		$quality eq $QUALITY_LO ? 'low bitrate' :
