@@ -24,7 +24,7 @@ use open IO  => ":encoding(utf8)";
 
 our $usage = 'Usage:
   get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls>] 
-  [-q <hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
+  [-q <fhd|hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
   [-t <temp dir>] [-i] [-C <config file>] 
   <Video ID | Page with video URL> 
 
