@@ -173,7 +173,10 @@ our $QUALITY_FH = 'fh';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
 our $QUALITY_LO = 'lo';
-our $MAXLENGTH = 64;
+our $MAX_FILE_NAME_LENGTH = 64;
+our $MAX_PROGRAM_NAME_LENGTH = 24;
+our $MIN_NAME_PART_LENGTH = 8;
+our $NAME_PARTS_CONNECTOR = ' - ';
 our @WGET_ERRORS = (
 	'No problems occurred',
 	'Generic error code',
@@ -1099,24 +1102,21 @@ sub guess_article_name_from_videos {
 }
 
 sub cook_extension {
-	return '.mkv' if $options->{'command'} eq $COMMAND_MERGE;
+	return 'mkv' if $options->{'command'} eq $COMMAND_MERGE;
 
-	return '.mp4' if $options->{'command'} eq $COMMAND_SAVE;
+	return 'mp4' if $options->{'command'} eq $COMMAND_SAVE;
 
-	return '.m3u8' if $options->{'command'} eq $COMMAND_PLAYLIST;
+	return 'm3u8' if $options->{'command'} eq $COMMAND_PLAYLIST;
 
 	die 'Unsupported command';
 }
 
-sub fit_file_name_length {
-	$_ = shift;
+sub get_article_name {
+	$_ = $session->{'article'}->{'name'};
+	$_ ||= &guess_article_name_from_videos;
+	$_ ||= $session->{'videos'}->[0]->{'name'};
 
-	return $_ if length $_ <= $MAXLENGTH;
-
-	s/(\.\S+?)$//;
-	my $ext = $1;
-
-	substr($_, 0,$MAXLENGTH - length $ext - 1) . '…' . $ext;
+	return $_;
 }
 
 sub get_program_name {
@@ -1131,21 +1131,8 @@ sub get_program_name {
 	return $_;
 }
 
-sub cook_file_name {
-	local $_;
-
-	if ($options->{'id'}) {
-		$_ = $session->{'show_id'};
-	} else {
-		$_ ||= $session->{'article'}->{'name'};
-		$_ ||= &guess_article_name_from_videos;
-		$_ ||= $session->{'videos'}->[0]->{'name'};
-
-		die 'Can not cook file name' unless $_;
-
-		my $program_name = &get_program_name;
-		$_ = $program_name . ' - ' . $_ if $program_name;
-	}
+sub clean_string_for_file_name {
+	$_= shift;
 
 	s/^\s+//;
 	s/\s+$//;
@@ -1157,9 +1144,76 @@ sub cook_file_name {
 	s/\"//g;
 	s/\?+/⁇/g;
 
-	$_ .= &cook_extension;
+	return $_;
+}
 
-	fit_file_name_length $_;
+sub truncate_string_and_put_ellipsis {
+	$_ = shift;
+	my $max_length = shift;
+	my $min_length = shift;
+	my $ellipsis = shift;
+
+	$min_length ||= 1;
+	$ellipsis ||= '…';
+
+	if (length $_ > $max_length) {
+		$max_length -= length $ellipsis;
+		s/^(.{$max_length}).*$/${1}${ellipsis}/
+			unless s/^(.{$min_length,$max_length})\s.*$/${1}${ellipsis}/;
+	}
+
+	return $_;
+}
+
+sub fit_name_and_ext_to_file_name {
+	my $name = shift; # Assumed to be already clean
+	my $ext = shift; # No dot
+
+	my $name_max_length = $MAX_FILE_NAME_LENGTH - 1 - length $ext;
+
+	$name = truncate_string_and_put_ellipsis $name, $name_max_length, $MIN_NAME_PART_LENGTH;
+
+	return "${name}.${ext}";
+}
+
+sub fit_program_and_article_names_and_ext_to_file_name {
+	my $program_name = shift; # Assumed to be already clean
+	my $article_name = shift; # Assumed to be already clean
+	my $ext = shift; # No dot
+
+	my $name_max_length = $MAX_FILE_NAME_LENGTH - 1 - length $ext;
+
+	my $name = $program_name . $NAME_PARTS_CONNECTOR . $article_name;
+
+	if (length $name > $name_max_length) {
+		$program_name = truncate_string_and_put_ellipsis $program_name, $MAX_PROGRAM_NAME_LENGTH, $MIN_NAME_PART_LENGTH;
+
+		$name = truncate_string_and_put_ellipsis $program_name . $NAME_PARTS_CONNECTOR . $article_name, 
+			$name_max_length, $MIN_NAME_PART_LENGTH;
+	}
+
+	return "${name}.${ext}";
+}
+
+sub cook_file_name {
+	my $name;
+
+	my $ext = &cook_extension;
+
+	if ($options->{'id'}) {
+		return fit_name_and_ext_to_file_name $session->{'show_id'}, $ext;
+	} else {
+		my $article_name = &clean_string_for_file_name(&get_article_name);
+
+		die 'No article name' unless $article_name;
+
+		my $program_name = &clean_string_for_file_name(&get_program_name);
+
+		return $program_name
+			? fit_program_and_article_names_and_ext_to_file_name
+				$program_name, $article_name, $ext
+			: fit_name_and_ext_to_file_name $article_name, $ext;
+	}
 }
 
 sub cook_output_dir {
