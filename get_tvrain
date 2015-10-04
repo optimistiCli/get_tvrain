@@ -173,7 +173,7 @@ our $QUALITY_FH = 'fh';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
 our $QUALITY_LO = 'lo';
-our $MAXLENGTH = 48;
+our $MAXLENGTH = 64;
 our @WGET_ERRORS = (
 	'No problems occurred',
 	'Generic error code',
@@ -209,6 +209,12 @@ sub MIME::Base64::encode_base64;
 sub set_binmode {
 	binmode STDOUT, ":utf8";
 	binmode STDERR, ":utf8";
+}
+
+sub boolean_to_string {
+	return int $_[0]
+		? 'Yes'
+		: 'No';
 }
 
 sub dumpit {
@@ -636,17 +642,33 @@ sub cook_programs_request {
 
 # TODO: Make sense
 # TODO: Replace show id with program id
-sub cook_articles_request {
-	my $show_id = shift;
+sub cook_program_articles_request {
+	my $program_id = shift;
 
 	{
 		'name'						=> 'articles',
 		'method'					=> 'GET',
-		'url'							=> "$API_URL_BASE/programs/$show_id/articles/",
+		'url'							=> "$API_URL_BASE/programs/$program_id/articles/",
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
 			'X-Result-Define-Pagination'	=> '1/20'
+		},
+		'error_overrides'	=> {
+		},
+	}
+}
+
+sub cook_program_request {
+	my $program_id = shift;
+
+	{
+		'name'						=> 'articles',
+		'method'					=> 'GET',
+		'url'							=> "$API_URL_BASE/programs/$program_id/",
+		'post_params'			=> {
+		},
+		'extra_headers'		=> {
 		},
 		'error_overrides'	=> {
 		},
@@ -1010,8 +1032,8 @@ sub get_programs {
 }
 
 # TODO: Make sense
-sub get_articles {
-	my $articles_response = call_api cook_articles_request $session->{'show_id'};
+sub get_program_articles {
+	my $articles_response = call_api cook_program_articles_request $session->{'program_id'};
 
 	#brag_and_exit "Article not found\nPlease check show ID / URL" if defined $articles_response->[0]->{'error'};
 
@@ -1028,11 +1050,25 @@ sub get_article {
 	brag_and_exit "Server returned malformed article data for show ID " . $session->{'show_id'} 
 		unless defined $article_response->{$session->{'show_id'}};
 	$session->{'article'} = $article_response->{$session->{'show_id'}};
+	$session->{'program_id'} = $session->{'article'}->{'program_id'};
 
 	debug 'article', dumpit $session->{'article'} if $options->{'verbose'};
 }
 
-sub guess_common_name {
+sub get_program {
+	return unless $session->{'program_id'};
+
+	my $program_response = call_api cook_program_request $session->{'program_id'};
+
+	return if defined $program_response->{'error'};
+
+	return unless defined $program_response->{$session->{'program_id'}};
+	$session->{'program'} = $program_response->{$session->{'program_id'}};
+
+	debug 'program', dumpit $session->{'program'} if $options->{'verbose'};
+}
+
+sub guess_article_name_from_videos {
 	my $common;
 
 	for (my $i = 0; $i < scalar @{$session->{'videos'}}; $i++) {
@@ -1083,16 +1119,33 @@ sub fit_file_name_length {
 	substr($_, 0,$MAXLENGTH - length $ext - 1) . '…' . $ext;
 }
 
+sub get_program_name {
+	return undef unless $session->{'program_id'};
+	return undef unless $session->{'program'};
+
+	$_ = $session->{'program'}->{'name'};
+
+	s/^\s*//;
+	s/\s*$//;
+
+	return $_;
+}
+
 sub cook_file_name {
 	local $_;
 
-	$_ = $session->{'show_id'} if $options->{'id'};
+	if ($options->{'id'}) {
+		$_ = $session->{'show_id'};
+	} else {
+		$_ ||= $session->{'article'}->{'name'};
+		$_ ||= &guess_article_name_from_videos;
+		$_ ||= $session->{'videos'}->[0]->{'name'};
 
-	$_ ||= $session->{'article'}->{'name'};
-	$_ ||= &guess_common_name;
-	$_ ||= $session->{'videos'}->[0]->{'name'};
+		die 'Can not cook file name' unless $_;
 
-	die 'Can not cook file name' unless $_;
+		my $program_name = &get_program_name;
+		$_ = $program_name . ' - ' . $_ if $program_name;
+	}
 
 	s/^\s+//;
 	s/\s+$//;
@@ -1406,31 +1459,27 @@ sub get_total_duration {
 	return $total_ms;
 }
 
-sub boolean_to_string {
-	return int $_[0]
-		? 'Yes'
-		: 'No';
-}
-
 sub info_it {
 	my $number_of_segments = scalar @{$session->{'videos'}};
 
 	printf 'Article:
-  Show ID:        %s
-  Name:           %s
-  URL:            %s
+  Program name:   %s
   Program ID:     %s
-  Date:           %s
+  Show name:      %s
+  Show ID:        %s
+  Timestamp:      %s
+  URL:            %s
   Video segments: %i
   Complete show:  %s
   Total duration: %s
 
 ', 
-	$session->{'show_id'},
+	get_program_name,
+	$session->{'program_id'},
 	$session->{'article'}->{'name'},
-	$SITE_URL_BASE . $session->{'article'}->{'url'},
-	$session->{'article'}->{'program_id'},
+	$session->{'show_id'},
 	$session->{'article'}->{'date_active_start'},
+	$SITE_URL_BASE . $session->{'article'}->{'url'},
 	$number_of_segments,
 	boolean_to_string($session->{'article'}->{'is_full'}),
 	millisec_to_human_readeble(&get_total_duration);
@@ -1474,6 +1523,7 @@ sub main {
 	&link_if_not_linked;
 	&get_me_to_check_auth;
 	&get_article;
+	&get_program;
 	&get_videos;
 	&decide_on_output_path if &need_output_path;
 	&do_the_job;
