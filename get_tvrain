@@ -160,7 +160,8 @@ our $REQUIRED_MODULES = [
 ];
 our $CONFIG_FILE_NAME = '.get_tvrain.conf';
 our $DEVICE_NAME = 'optimistiCli';
-our $URL_BASE = 'https://api.tvrain.ru/api_v2';
+our $API_URL_BASE = 'https://api.tvrain.ru/api_v2';
+our $SITE_URL_BASE = 'https://tvrain.ru';
 our $API_CONSUMER_KEY = 'a908545f-80af-4f99-8dac-fb012cec';
 our $API_VERSION = '2.13';
 our $LINK_POLL_TIMEOUT_SEC=15;
@@ -518,7 +519,7 @@ sub cook_quickauth_request {
 	{
 		'name'					=> 'quickauth',
 		'method'				=> 'POST',
-		'url'						=> "$URL_BASE/user/quickauth/",
+		'url'						=> "$API_URL_BASE/user/quickauth/",
 		'post_params'		=> {
 			'device_uid'		=> $config->{_}->{'device_uid'},
 		},
@@ -533,7 +534,7 @@ sub cook_startlinking_request {
 	{
 		'name'					=> 'startlinking',
 		'method'				=> 'POST',
-		'url'						=> "$URL_BASE/user/startlinking/",
+		'url'						=> "$API_URL_BASE/user/startlinking/",
 		'post_params'		=> {
 		},
 		'extra_headers'	=> {
@@ -549,7 +550,7 @@ sub cook_link_request {
 	{
 		'name'						=> 'link',
 		'method'					=> 'POST',
-		'url'							=> "$URL_BASE/user/link/",
+		'url'							=> "$API_URL_BASE/user/link/",
 		'post_params'			=> {
 			'device_uid'			=> $config->{_}->{'device_uid'},
 			'oid'							=> $oid,
@@ -568,7 +569,7 @@ sub cook_me_request {
 	{
 		'name'						=> 'me',
 		'method'					=> 'GET',
-		'url'							=> "$URL_BASE/user/me/",
+		'url'							=> "$API_URL_BASE/user/me/",
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
@@ -587,7 +588,7 @@ sub cook_videos_request {
 	{
 		'name'						=> 'videos',
 		'method'					=> 'GET',
-		'url'							=> "$URL_BASE/articles/$show_id/videos/",
+		'url'							=> "$API_URL_BASE/articles/$show_id/videos/",
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
@@ -605,7 +606,7 @@ sub cook_categories_request {
 	{
 		'name'						=> 'categories',
 		'method'					=> 'GET',
-		'url'							=> "$URL_BASE/programs/categories/",
+		'url'							=> "$API_URL_BASE/programs/categories/",
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
@@ -620,7 +621,7 @@ sub cook_programs_request {
 	{
 		'name'						=> 'programs',
 		'method'					=> 'GET',
-		'url'							=> "$URL_BASE/programs/",
+		'url'							=> "$API_URL_BASE/programs/",
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
@@ -641,7 +642,7 @@ sub cook_articles_request {
 	{
 		'name'						=> 'articles',
 		'method'					=> 'GET',
-		'url'							=> "$URL_BASE/programs/$show_id/articles/",
+		'url'							=> "$API_URL_BASE/programs/$show_id/articles/",
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
@@ -658,7 +659,7 @@ sub cook_article_request {
 	{
 		'name'						=> 'article',
 		'method'					=> 'GET',
-		'url'							=> "$URL_BASE/articles/$show_id/",
+		'url'							=> "$API_URL_BASE/articles/$show_id/",
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
@@ -1031,7 +1032,7 @@ sub get_article {
 	debug 'article', dumpit $session->{'article'} if $options->{'verbose'};
 }
 
-sub get_common_name {
+sub guess_common_name {
 	my $common;
 
 	for (my $i = 0; $i < scalar @{$session->{'videos'}}; $i++) {
@@ -1087,8 +1088,8 @@ sub cook_file_name {
 
 	$_ = $session->{'show_id'} if $options->{'id'};
 
-	$_ ||= &get_common_name;
-
+	$_ ||= $session->{'article'}->{'name'};
+	$_ ||= &guess_common_name;
 	$_ ||= $session->{'videos'}->[0]->{'name'};
 
 	die 'Can not cook file name' unless $_;
@@ -1405,15 +1406,34 @@ sub get_total_duration {
 	return $total_ms;
 }
 
+sub boolean_to_string {
+	return int $_[0]
+		? 'Yes'
+		: 'No';
+}
+
 sub info_it {
 	my $number_of_segments = scalar @{$session->{'videos'}};
 
 	printf 'Article:
   Show ID:        %s
+  Name:           %s
+  URL:            %s
+  Program ID:     %s
+  Date:           %s
   Video segments: %i
+  Complete show:  %s
   Total duration: %s
 
-', $session->{'show_id'}, $number_of_segments, millisec_to_human_readeble(&get_total_duration);
+', 
+	$session->{'show_id'},
+	$session->{'article'}->{'name'},
+	$SITE_URL_BASE . $session->{'article'}->{'url'},
+	$session->{'article'}->{'program_id'},
+	$session->{'article'}->{'date_active_start'},
+	$number_of_segments,
+	boolean_to_string($session->{'article'}->{'is_full'}),
+	millisec_to_human_readeble(&get_total_duration);
 
 	for (my $i = 0 ; $i < $number_of_segments; $i++) {
 		my $video = $session->{'videos'}->[$i];
