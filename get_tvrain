@@ -600,6 +600,41 @@ sub cook_videos_request {
 	}
 }
 
+# TODO: Make sense
+sub cook_categories_request {
+	{
+		'name'						=> 'categories',
+		'method'					=> 'GET',
+		'url'							=> "$URL_BASE/programs/categories/",
+		'post_params'			=> {
+		},
+		'extra_headers'		=> {
+		},
+		'error_overrides'	=> {
+		},
+	}
+}
+
+# TODO: Make sense
+sub cook_programs_request {
+	{
+		'name'						=> 'programs',
+		'method'					=> 'GET',
+		'url'							=> "$URL_BASE/programs/",
+		'post_params'			=> {
+		},
+		'extra_headers'		=> {
+			'X-Result-Define-Pagination'		=> '1/200',
+			'X-Result-Define-Thumb-Width'		=> '380',
+			'X-Result-Define-Thumb-height'	=> '240',
+		},
+		'error_overrides'	=> {
+		},
+	}
+}
+
+# TODO: Make sense
+# TODO: Replace show id with program id
 sub cook_articles_request {
 	my $show_id = shift;
 
@@ -613,6 +648,26 @@ sub cook_articles_request {
 			'X-Result-Define-Pagination'	=> '1/20'
 		},
 		'error_overrides'	=> {
+		},
+	}
+}
+
+sub cook_article_request {
+	my $show_id = shift;
+
+	{
+		'name'						=> 'article',
+		'method'					=> 'GET',
+		'url'							=> "$URL_BASE/articles/$show_id/",
+		'post_params'			=> {
+		},
+		'extra_headers'		=> {
+			'X-Result-Define-Pagination'	=> '1/20'
+		},
+		'error_overrides'	=> {
+			'404'							=> {
+				'error'						=> '404 Not Found',
+			}
 		},
 	}
 }
@@ -918,6 +973,8 @@ sub get_me_to_check_auth {
 }
 
 sub get_videos {
+	brag_and_exit 'No video in the show id ' . $session->{'show_id'} unless $session->{'article'}->{'has_video'};
+
 	my $videos_response = call_api cook_videos_request $session->{'show_id'};
 
 	brag_and_exit "Video not found\nPlease check show ID / URL" if defined $videos_response->[0]->{'error'};
@@ -926,17 +983,52 @@ sub get_videos {
 
 	debug 'videos', dumpit $session->{'videos'} if $options->{'verbose'};
 
-	brag_and_exit 'No video in the show id ' . $session->{'show_id'} unless defined $session->{'videos'}->[0]->{'mp4'};
+	brag_and_exit 'Server lists no videos for the show id ' . $session->{'show_id'} unless defined $session->{'videos'}->[0]->{'mp4'};
 }
 
+# TODO: Make sense
+sub get_categories {
+	my $categories_response = call_api cook_categories_request;
+
+	#brag_and_exit "Can not get programs" if defined $categories_response->[0]->{'error'};
+
+	$session->{'categories'} = $categories_response;
+
+	debug 'categories', dumpit $session->{'categories'} if $options->{'verbose'};
+}
+
+# TODO: Make sense
+sub get_programs {
+	my $programs_response = call_api cook_programs_request;
+
+	#brag_and_exit "Can not get programs" if defined $programs_response->[0]->{'error'};
+
+	$session->{'programs'} = $programs_response;
+
+	debug 'programs', dumpit $session->{'programs'} if $options->{'verbose'};
+}
+
+# TODO: Make sense
 sub get_articles {
 	my $articles_response = call_api cook_articles_request $session->{'show_id'};
 
-	brag_and_exit "Article not found\nPlease check show ID / URL" if defined $articles_response->[0]->{'error'};
+	#brag_and_exit "Article not found\nPlease check show ID / URL" if defined $articles_response->[0]->{'error'};
 
-	$session->{'articles'} = $articles_response;
+	#$session->{'articles'} = $articles_response;
 
-	debug 'articles', dumpit $session->{'articles'} if $options->{'verbose'};
+	#debug 'articles', dumpit $session->{'articles'} if $options->{'verbose'};
+}
+
+sub get_article {
+	my $article_response = call_api cook_article_request $session->{'show_id'};
+
+	brag_and_exit "Article not found\nPlease check show ID / URL" if defined $article_response->{'error'};
+
+	brag_and_exit "Server returned malformed article data for show ID " . $session->{'show_id'} 
+		unless defined $article_response->{$session->{'show_id'}};
+	$session->{'article'} = $article_response->{$session->{'show_id'}};
+
+	debug 'article', dumpit $session->{'article'} if $options->{'verbose'};
 }
 
 sub get_common_name {
@@ -976,7 +1068,7 @@ sub cook_extension {
 
 	return '.m3u8' if $options->{'command'} eq $COMMAND_PLAYLIST;
 
-	die 'Unknown command';
+	die 'Unsupported command';
 }
 
 sub fit_file_name_length {
@@ -1361,8 +1453,7 @@ sub main {
 	&decide_on_temp_dir;
 	&link_if_not_linked;
 	&get_me_to_check_auth;
-&get_articles;
-return;
+	&get_article;
 	&get_videos;
 	&decide_on_output_path if &need_output_path;
 	&do_the_job;
