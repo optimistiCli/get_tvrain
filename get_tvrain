@@ -1507,6 +1507,9 @@ sub get_total_duration {
 	my $total_ms = 0;
 
 	for (my $i = 0 ; $i < scalar @{$session->{'videos'}}; $i++) {
+		# A workaround for server returinig zero video segment duration
+		return 0 unless $session->{'videos'}->[$i]->{'duration'};
+
 		$total_ms += $session->{'videos'}->[$i]->{'duration'};
 	}
 
