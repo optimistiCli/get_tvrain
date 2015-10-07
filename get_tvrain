@@ -23,17 +23,17 @@ use open IO  => ":encoding(utf8)";
 ### 11. Add option to output playlist to STDOUT (-o -)
 
 our $usage = 'Usage:
-  get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls>] 
-  [-q <fhd|hd|sd|lo>] [-d <output dir>] [-o <output file name>] 
-  [-t <temp dir>] [-i] [-C <config file>] 
-  <Show ID | Page with video URL> 
+  get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls|info>]
+  [-q <fhd|hd|sd|lo>] [-d <output dir>] [-o <output file name>]
+  [-t <temp dir>] [-i] [-C <config file>]
+  <Show ID | Page with video URL>
 
-TVRain.ru show archive command line client. Legitimate paying users only! 
+TVRain.ru show archive command line client. Legitimate paying users only!
 
-To download a show in current directory run: 
+To download a show in current directory run:
   get_tvrain http://tvrain.ru/teleshow/reportazh/the_rain_is_falling-123456/
 
-To get detailed options description run: 
+To get detailed options description run:
   get_tvrain --long-help
 ';
 
@@ -44,81 +44,81 @@ Options:
   -F Force first run, resets all options, see below
   -S Simulate, do not actualy download anything
   -c Command, instructs get_tvrain what to do:
-       merge - downloads all parts of the video and merges them into one 
-               matroska file, requires temp directory for downloaded parts, 
-               this is the default command
-       save  - saves each part of the video as is
-       pls   - does not download any video, saves a playlist with video URLs
-       info  - print out video informaton
+       m[erge] - downloads all parts of the video and merges them into one
+                 matroska file, requires temp directory for downloaded parts,
+                 this is the default command
+       s[ave]  - saves each part of the video as is
+       p[ls]   - does not download any video, saves a playlist with video URLs
+       i[nfo]  - print out video informaton
   -q Video quality selector, available options are:
-       fhd - full HD aka 1080p
-       hd  - high definition aka 720p (default)
-       sd  - standard definition aka 480p
-       lo  - low bitrate aka 360p
-  -d Write output file(s) to the specified directory, defaults to current 
+       f[hd] - full HD aka 1080p
+       h[d]  - high definition aka 720p (default)
+       s[d]  - standard definition aka 480p
+       l[o]  - low bitrate aka 360p
+  -d Write output file(s) to the specified directory, defaults to current
      directory
-  -o Set output file(s) name, if omitted the article / feature name is used 
+  -o Set output file(s) name, if omitted the article / feature name is used
      to compose the file name(s); overrides -d and -i
-  -t Use specified directory to temporarily store downloaded video parts for 
-     the "merge" command, if omitted looks up temp_dir in the configuration 
+  -t Use specified directory to temporarily store downloaded video parts for
+     the "merge" command, if omitted looks up temp_dir in the configuration
      file, which defaults to the current directory
   -i Use show ID for the file(s) name
   -C Use specified configuration file instead of the default one
 
 Examples:
-  Download a show by URL, if video consists of several parts merge them 
+  Download a show by URL, if video consists of several parts merge them
   together. Use /tmp to store temporary files.
   get_tvrain -t /tmp http://tvrain.ru/teleshow/reportazh/falling_rain-123456/
 
-  Download a show known by its ID to the Desktop. Select low bitrate to 
-  preserve the bandwidth. If there are several video files save them 
+  Download a show known by its ID to the Desktop. Select low bitrate to
+  preserve the bandwidth. If there are several video files save them
   separately. Name files using show ID.
   get_tvrain -d ~/Desktop -q lo -c save -i 123456
 
-  Create a custom-named playlist of the standard definition videos. If a 
+  Create a custom-named playlist of the standard definition videos. If a
   playlist by the same name already exists overwrite it.
   get_tvrain -q sd -o /mnt/autoplay/tvrain.pls -c pls -y 123456
 
 Requirements:
-  A few perl modules off CPAN are required. If they are missing the program 
+  A few perl modules off CPAN are required. If they are missing the program
   will let you know which modules it lacks and suggest a way to install them.
-  Also wget is used to download stuff and either mkvmerge or ffmpeg for 
+  Also wget is used to download stuff and either mkvmerge or ffmpeg for
   joining video fragments.
 
 Configuration file:
-  The configuration file is .get_tvrain.conf in your home directory, This file 
-  is created automatically during the first run. Use -C option to run with 
-  alternative configuration file. File format is name=value, no whitespaces 
+  The configuration file is .get_tvrain.conf in your home directory, This file
+  is created automatically during the first run. Use -C option to run with
+  alternative configuration file. File format is name=value, no whitespaces
   around the "=", no comments after the value are allowed. Encoding is UTF-8.
   Noteworthy options:
     device_uid
-      Client-side hardware unique identifier / serial number. In fact this 
+      Client-side hardware unique identifier / serial number. In fact this
       value is randomly generated during the first run.
     auth
-      Authentication key. This value is obtained from the server when the 
-      client is linked to TVRain.ru user account as a part of the first run 
+      Authentication key. This value is obtained from the server when the
+      client is linked to TVRain.ru user account as a part of the first run
       routine.
     temp_dir
-      The directory to temporarily store downloaded video parts for the 
-      "merge" command. Please make sure the directory is on a reasonably fast 
-      storage device (ie the use of thumb drives and flash cards is 
-      discouraged) and that it has enough free space (4Gb would do). If not 
-      set the current directory or the value passed with the -t option is 
+      The directory to temporarily store downloaded video parts for the
+      "merge" command. Please make sure the directory is on a reasonably fast
+      storage device (ie the use of thumb drives and flash cards is
+      discouraged) and that it has enough free space (4Gb would do). If not
+      set the current directory or the value passed with the -t option is
       used.
 
 First run:
-  When run for the first time the "first run routine" is invoked to configure 
+  When run for the first time the "first run routine" is invoked to configure
   the application. It does as follows:
     1. configuration file is created
     2. unique identifier is randomly generated
     3. client is linked to the TVRain.ru user account
     4. temporary directory is set
-  To clear all the settings the first run routine can be re-run manually 
+  To clear all the settings the first run routine can be re-run manually
   by specifying the -F option or just by deleting the configuration file.
 
 Linking:
-  In order to gain access to the TVRain.ru show archive the client software 
-  should be "linked" to an active paid user account. Linking happens during 
+  In order to gain access to the TVRain.ru show archive the client software
+  should be "linked" to an active paid user account. Linking happens during
   the first run and requires internet access and user interaction.
 
 ';
@@ -303,11 +303,11 @@ sub cook_missing_modules_error_message {
 	my $pre_module = "sudo perl -MCPAN -e 'install +";
 	my $post_module = "'";
 
-	my $missing_modules_error_matrix = sprintf 'One or more required perl modules are missing. On many sane systems (not on 
+	my $missing_modules_error_matrix = sprintf 'One or more required perl modules are missing. On many sane systems (not on
 cygwin) They can be installed off CPAN by running something like this:
 >=== CODE ===<
 %s%%s%s
->=== CODE ===<', 
+>=== CODE ===<',
 	$pre_module, $post_module;
 
 	sprintf $missing_modules_error_matrix, join "$post_module\n$pre_module", @$missing_modules;
@@ -419,7 +419,7 @@ sub check_option_command {
 	# Command should be set, otherwise there is an error
 	$_ = $options->{'command'};
 
-	$options->{'command'} = 
+	$options->{'command'} =
 		/^m|merge|mkv|join|matroska$/i ? $COMMAND_MERGE :
 		/^s|save|download|dl|asis|mp4|dump$/i ? $COMMAND_SAVE :
 		/^p|pls|playlist|pls|play.?list|m3u|m3u8$/i ? $COMMAND_PLAYLIST :
@@ -433,7 +433,7 @@ sub check_option_quality {
 	# Quality should be set, otherwise there is an error
 	$_ = $options->{'quality'};
 
-	$options->{'quality'} = 
+	$options->{'quality'} =
 		/^f|fh|fhd|full.*|1080|1080p$/i ? $QUALITY_FH :
 		/^h|hd|hq|high|hi|720|720p$/i ? $QUALITY_HD :
 		/^s|sd|sq|stand.*|std|480|480p$/i ? $QUALITY_SD :
@@ -498,8 +498,8 @@ sub check_option_config {
 		brag_and_exit "Config file '$options->{'config'}' can not be written to" unless -w $options->{'config'};
 
 		# Avoid accidental damage: accept config file only if the file is a proper config file or if it is an empty file
-		brag_and_exit "Cowardly refusing to use non-config file '$options->{'config'}'" 
-			unless defined Config::Tiny->read($options->{'config'}, 'utf8') 
+		brag_and_exit "Cowardly refusing to use non-config file '$options->{'config'}'"
+			unless defined Config::Tiny->read($options->{'config'}, 'utf8')
 				|| (stat($options->{'config'}))[7] == 0;
 	} else {
 		my $file_creation_error = get_file_creation_error $options->{'config'}, 'Config file';
@@ -514,13 +514,13 @@ sub cook_rand_xxxx {
 }
 
 sub cook_device_uid {
-	&cook_rand_xxxx . '-' . 
-	&cook_rand_xxxx . '-' . 
-	&cook_rand_xxxx . '-' . 
-	&cook_rand_xxxx . '-' . 
-	&cook_rand_xxxx . '-' . 
-	&cook_rand_xxxx . '-' . 
-	&cook_rand_xxxx . '-' . 
+	&cook_rand_xxxx . '-' .
+	&cook_rand_xxxx . '-' .
+	&cook_rand_xxxx . '-' .
+	&cook_rand_xxxx . '-' .
+	&cook_rand_xxxx . '-' .
+	&cook_rand_xxxx . '-' .
+	&cook_rand_xxxx . '-' .
 	&cook_rand_xxxx;
 }
 
@@ -758,7 +758,7 @@ sub read_command_line_options {
 	my $error_message;
 	my $error = tie *STDERR, 'IO::Scalar', \$error_message;
 
-	my $all_went_well = Getopt::Long::GetOptions ($options, 
+	my $all_went_well = Getopt::Long::GetOptions ($options,
 		'help|h',
 		'long_help|long-help',
 		'verbose|v',
@@ -860,7 +860,7 @@ sub get_show_id {
 }
 
 sub set_config_file_path {
-	$session->{'config_file_path'} = 	defined $options->{'config'} 
+	$session->{'config_file_path'} = 	defined $options->{'config'}
 		? $options->{'config'}
 		: File::HomeDir->my_home . "/$CONFIG_FILE_NAME";
 
@@ -1050,7 +1050,7 @@ sub get_article {
 
 	brag_and_exit "Article not found\nPlease check show ID / URL" if defined $article_response->{'error'};
 
-	brag_and_exit "Server returned malformed article data for show ID " . $session->{'show_id'} 
+	brag_and_exit "Server returned malformed article data for show ID " . $session->{'show_id'}
 		unless defined $article_response->{$session->{'show_id'}};
 	$session->{'article'} = $article_response->{$session->{'show_id'}};
 	$session->{'program_id'} = $session->{'article'}->{'program_id'};
@@ -1140,7 +1140,7 @@ sub clean_string_for_file_name {
 	s/[:#\\\/\*]+/./g;
 	s/[\{\<]/[/g;
 	s/[\}\>]/[]/g;
-	s/\"(.*?)\"/«$1»/g; 
+	s/\"(.*?)\"/«$1»/g;
 	s/\"//g;
 	s/\?+/⁇/g;
 
@@ -1188,7 +1188,7 @@ sub fit_program_and_article_names_and_ext_to_file_name {
 	if (length $name > $name_max_length) {
 		$program_name = truncate_string_and_put_ellipsis $program_name, $MAX_PROGRAM_NAME_LENGTH, $MIN_NAME_PART_LENGTH;
 
-		$name = truncate_string_and_put_ellipsis $program_name . $NAME_PARTS_CONNECTOR . $article_name, 
+		$name = truncate_string_and_put_ellipsis $program_name . $NAME_PARTS_CONNECTOR . $article_name,
 			$name_max_length, $MIN_NAME_PART_LENGTH;
 	}
 
@@ -1299,7 +1299,7 @@ sub cook_temp_video_path {
 sub cook_no_quality_error_message {
 	my $quality = shift;
 
-	my $quality_string = 
+	my $quality_string =
 		$quality eq $QUALITY_FH ? 'full hd' :
 		$quality eq $QUALITY_HD ? 'high definition' :
 		$quality eq $QUALITY_SD ? 'standard definition' :
@@ -1530,7 +1530,7 @@ sub info_it {
   Complete show:  %s
   Total duration: %s
 
-', 
+',
 	get_program_name,
 	$session->{'program_id'},
 	$session->{'article'}->{'name'},
