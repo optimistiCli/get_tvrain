@@ -169,6 +169,7 @@ our $COMMAND_MERGE = 'merge';
 our $COMMAND_SAVE = 'save';
 our $COMMAND_PLAYLIST = 'pls';
 our $COMMAND_INFO = 'info';
+our $COMMAND_PROGRAMS_LIST = 'programs';
 our $QUALITY_FH = 'fh';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
@@ -190,6 +191,8 @@ our @WGET_ERRORS = (
 );
 our $MERGE_WITH_MKVMERGE = 'mkvmerge';
 our $MERGE_WITH_FFMPEG = 'ffmpeg';
+our $PROGRAMS_PER_PAGE = 10;
+our $PROGRAMS_FILE_NAME = 'programs.txt';
 
 
 ### Globals
@@ -402,7 +405,7 @@ sub get_dir_wrieable_error {
 	undef;
 }
 
-sub check_if_dir_is_wrieable {
+sub check_if_dir_is_writeable {
 	my $dir_path = shift;
 	my $description = shift;
 
@@ -424,6 +427,7 @@ sub check_option_command {
 		/^s|save|download|dl|asis|mp4|dump$/i ? $COMMAND_SAVE :
 		/^p|pls|playlist|pls|play.?list|m3u|m3u8$/i ? $COMMAND_PLAYLIST :
 		/^i|info|information|inf$/i ? $COMMAND_INFO :
+		/^r|prog|programs$/i ? $COMMAND_PROGRAMS_LIST :
 		brag_and_exit "Unknown command $_";
 
 	debug 'command', $options->{'command'} if $options->{'verbose'};
@@ -446,7 +450,7 @@ sub check_option_quality {
 sub check_option_output_dir {
 	return unless defined $options->{'output_dir'};
 
-	$options->{'output_dir'} = check_if_dir_is_wrieable $options->{'output_dir'}, 'Output directory';
+	$options->{'output_dir'} = check_if_dir_is_writeable $options->{'output_dir'}, 'Output directory';
 
 	debug 'output dir', $options->{'output_dir'} if $options->{'verbose'};
 }
@@ -486,7 +490,7 @@ sub check_option_output_file {
 sub check_option_temp_dir {
 	return unless defined $options->{'temp_dir'};
 
-	$options->{'temp_dir'} = check_if_dir_is_wrieable $options->{'temp_dir'}, 'Temporary directory';
+	$options->{'temp_dir'} = check_if_dir_is_writeable $options->{'temp_dir'}, 'Temporary directory';
 
 	debug 'temp dir', $options->{'temp_dir'} if $options->{'verbose'};
 }
@@ -627,6 +631,9 @@ sub cook_categories_request {
 
 # TODO: Make sense
 sub cook_programs_request {
+	my $page_number = shift;
+	my $items_per_page = shift;
+
 	{
 		'name'						=> 'programs',
 		'method'					=> 'GET',
@@ -634,9 +641,10 @@ sub cook_programs_request {
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
-			'X-Result-Define-Pagination'		=> '1/200',
 			'X-Result-Define-Thumb-Width'		=> '380',
 			'X-Result-Define-Thumb-height'	=> '240',
+			'X-Result-Define-Pagination'
+				=> $page_number . '/' . $items_per_page,
 		},
 		'error_overrides'	=> {
 		},
@@ -937,7 +945,7 @@ sub decide_on_temp_dir {
 			$session->{'temp_dir'} = $options->{'temp_dir'};
 		} else {
 			# Check and use config
-			$session->{'temp_dir'} = check_if_dir_is_wrieable $config->{_}->{'temp_dir'}, 'Default temporary directory';
+			$session->{'temp_dir'} = check_if_dir_is_writeable $config->{_}->{'temp_dir'}, 'Default temporary directory';
 		}
 	} else {
 		if (defined $options->{'temp_dir'}) {
@@ -953,7 +961,7 @@ sub decide_on_temp_dir {
 		}
 	}
 
-	check_if_dir_is_wrieable $options->{'temp_dir'}, 'Temporary directory';
+	check_if_dir_is_writeable $options->{'temp_dir'}, 'Temporary directory';
 }
 
 sub link_if_not_linked {
@@ -1021,17 +1029,6 @@ sub get_categories {
 	$session->{'categories'} = $categories_response;
 
 	debug 'categories', dumpit $session->{'categories'} if $options->{'verbose'};
-}
-
-# TODO: Make sense
-sub get_programs {
-	my $programs_response = call_api cook_programs_request;
-
-	#brag_and_exit "Can not get programs" if defined $programs_response->[0]->{'error'};
-
-	$session->{'programs'} = $programs_response;
-
-	debug 'programs', dumpit $session->{'programs'} if $options->{'verbose'};
 }
 
 # TODO: Make sense
@@ -1107,6 +1104,8 @@ sub cook_extension {
 	return 'mp4' if $options->{'command'} eq $COMMAND_SAVE;
 
 	return 'm3u8' if $options->{'command'} eq $COMMAND_PLAYLIST;
+
+	return 'txt' if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
 
 	die 'Unsupported command';
 }
@@ -1195,7 +1194,7 @@ sub fit_program_and_article_names_and_ext_to_file_name {
 	return "${name}.${ext}";
 }
 
-sub cook_file_name {
+sub cook_article_file_name {
 	my $name;
 
 	my $ext = &cook_extension;
@@ -1216,16 +1215,34 @@ sub cook_file_name {
 	}
 }
 
+sub cook_file_name {
+	return $PROGRAMS_FILE_NAME if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
+
+	return &cook_article_file_name;
+}
+
 sub cook_output_dir {
 	return $options->{'output_dir'} if defined $options->{'output_dir'};
 
-	return check_if_dir_is_wrieable '.', 'Current directory';
+	return check_if_dir_is_writeable '.', 'Current directory';
 }
 
 sub need_output_path {
 	return 0 if $options->{'command'} eq $COMMAND_INFO;
 
 	return 1;
+}
+
+sub going_for_a_video {
+	return 0 if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
+
+	return 1;
+}
+
+sub need_a_temp_dir {
+	return 1 if $options->{'command'} eq $COMMAND_MERGE;
+
+	return 0;
 }
 
 sub decide_on_output_path {
@@ -1489,6 +1506,8 @@ sub playlist_it {
 	open PLS, "> $session->{'output_path'}" or die "Can not open output file to write $session->{'output_path'}";
 	print PLS $buffer or die "Can not write to output file $session->{'output_path'}";
 	close PLS;
+
+	print "$session->{'output_path'}\n";
 }
 
 sub list_video_resolutions {
@@ -1553,6 +1572,50 @@ sub info_it {
 	}
 }
 
+sub print_meter {
+	my $pretext = shift;
+	my $filled = shift;
+	my $total = shift;
+
+	STDOUT->autoflush(1);
+	print "$pretext " . '*' x $filled . '.' x ($total - $filled) . "\r";
+	STDOUT->autoflush(0);
+}
+
+sub programs_list_it {
+	my $total_pages;
+	my $programs_response;
+	my $current_page = 0;
+	my $programs = [];
+
+	do {
+		++$current_page;
+
+		$programs_response = call_api cook_programs_request($current_page, $PROGRAMS_PER_PAGE);
+		brag_and_exit "Can not get programs page $current_page" unless $programs_response->{'current_page'};
+
+		$total_pages ||= int $programs_response->{'total_pages'};
+
+		push @{$programs}, @{$programs_response->{'elements'}};
+
+		print_meter "Retrieving programs", $current_page, $total_pages unless $options->{'verbose'};
+	} while( $current_page < $total_pages );
+
+	$session->{'programs'} = $programs;
+
+	debug 'programs', dumpit $session->{'programs'} if $options->{'verbose'};
+
+	my $number_of_programs = scalar @{$session->{'programs'}};
+	printf "Got %i programs\n", $number_of_programs;
+
+	open PROGRAMS, "> $session->{'output_path'}" or die "Can not open output file to write $session->{'output_path'}";
+	for (my $i = 0; $i < $number_of_programs; $i++) {
+		printf PROGRAMS "%s\t%s\n", $session->{'programs'}->[$i]->{'id'}, $session->{'programs'}->[$i]->{'name'}
+			or die "Can not write to output file $session->{'output_path'}";
+	}
+	close PROGRAMS;
+}
+
 sub do_the_job {
 	&merge_it if $options->{'command'} eq $COMMAND_MERGE;
 
@@ -1561,6 +1624,8 @@ sub do_the_job {
 	&playlist_it if $options->{'command'} eq $COMMAND_PLAYLIST;
 
 	&info_it if $options->{'command'} eq $COMMAND_INFO;
+
+	&programs_list_it if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
 }
 
 sub main {
@@ -1573,15 +1638,15 @@ sub main {
 	&deal_with_help_requests;
 	&interpret_command_line_options;
 	&decide_on_executables;
-	&get_show_id;
+	&get_show_id if &going_for_a_video;
 	&set_config_file_path;
 	&read_config;
-	&decide_on_temp_dir;
+	&decide_on_temp_dir if need_a_temp_dir;
 	&link_if_not_linked;
 	&get_me_to_check_auth;
-	&get_article;
-	&get_program;
-	&get_videos;
+	&get_article if &going_for_a_video;
+	&get_program if &going_for_a_video;
+	&get_videos if &going_for_a_video;
 	&decide_on_output_path if &need_output_path;
 	&do_the_job;
 }
