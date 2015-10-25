@@ -11,22 +11,19 @@ use open IO  => ":encoding(utf8)";
 
 ### TODOs:
 ###  1. Add config and command line options to set merger
-###  2. Add config option for output dir
-###  3. Add command to list videos
-###  4. Use curl if there's no wget
-###  5. Command to download latest full program by name
-###  6. Use OS-indepenadant path handling
-###  7. Implement 2-level verbosity with no operational output on base level.
-###  8. Implement proper file name cooking, length, compatibility, break on whitespace and all
-###  9. Add external executable paths to options and config
-### 10. Process a list of video ids, either from command line of from a file
-### 11. Add option to output playlist to STDOUT (-o -)
+###  2. Use curl if there's no wget
+###  3. Command to download latest full program by name
+###  4. Use OS-indepenadant path handling
+###  5. Implement 2-level verbosity with no operational output on base level.
+###  6. Add external executable paths to options and config
+###  7. Process a list of video ids, either from command line of from a file
+###  8. Add option to output playlist to STDOUT (-o -)
 
 our $usage = 'Usage:
-  get_tvrain [-h|--long-help] [-v] [-F] [-S] [-c <merge|save|pls|info>]
+  get_tvrain [-h|--long-help] [-c <merge|save|pls|info|programs|articles>]
   [-q <fhd|hd|sd|lo>] [-d <output dir>] [-o <output file name>]
-  [-t <temp dir>] [-i] [-C <config file>]
-  <Show ID | Page with video URL>
+  [-t <temp dir>] [-i] [-C <config file>] [-I <max items>] [-v] [-F] [-S]
+  <Show ID | Page with video URL | Program ID>
 
 TVRain.ru show archive command line client. Legitimate paying users only!
 
@@ -40,21 +37,23 @@ To get detailed options description run:
 our $long_help = $usage . '
 Options:
   -h Show usage and exit
-  -v Verbose output, prints a lot of debugging stuff to STDERR
-  -F Force first run, resets all options, see below
-  -S Simulate, do not actualy download anything
-  -c Command, instructs get_tvrain what to do:
-       m[erge] - downloads all parts of the video and merges them into one
-                 matroska file, requires temp directory for downloaded parts,
-                 this is the default command
-       s[ave]  - saves each part of the video as is
-       p[ls]   - does not download any video, saves a playlist with video URLs
-       i[nfo]  - print out video informaton
+  -c Command, instructs get_tvrain what to do
+       Downloading videos:
+       m|merge    - downloads all parts of the video and merges them into one
+                    matroska file, requires temp directory for downloaded parts,
+                    this is the default command
+       s|save     - saves each part of the video as is
+       Retreiving information (no videos downloaded):
+       p|pls      - saves a playlist with video URLs
+       i|info     - print out video informaton
+       r|programs - save full list of available programs as a text file
+       a|articles - save list of articles of the program specified by the 
+                    program ID as a text file; see -I for max number of items
   -q Video quality selector, available options are:
-       f[hd] - full HD aka 1080p
-       h[d]  - high definition aka 720p (default)
-       s[d]  - standard definition aka 480p
-       l[o]  - low bitrate aka 360p
+       f|fhd - full HD aka 1080p
+       h|hd  - high definition aka 720p (default)
+       s|sd  - standard definition aka 480p
+       l|lo  - low bitrate aka 360p
   -d Write output file(s) to the specified directory, defaults to current
      directory
   -o Set output file(s) name, if omitted the article / feature name is used
@@ -64,6 +63,11 @@ Options:
      file, which defaults to the current directory
   -i Use show ID for the file(s) name
   -C Use specified configuration file instead of the default one
+  -I Max number of items retrieved from the server; applies to the articles
+     command; if ommited defaults to a reasonable number
+  -v Verbose output, prints a lot of debugging stuff to STDERR
+  -F Force first run, resets all options, see below
+  -S Simulate, do not actualy download anything
 
 Examples:
   Download a show by URL, if video consists of several parts merge them
@@ -170,6 +174,7 @@ our $COMMAND_SAVE = 'save';
 our $COMMAND_PLAYLIST = 'pls';
 our $COMMAND_INFO = 'info';
 our $COMMAND_PROGRAMS_LIST = 'programs';
+our $COMMAND_PROGRAM_ARTICLES = 'articles';
 our $QUALITY_FH = 'fh';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
@@ -191,8 +196,9 @@ our @WGET_ERRORS = (
 );
 our $MERGE_WITH_MKVMERGE = 'mkvmerge';
 our $MERGE_WITH_FFMPEG = 'ffmpeg';
-our $PROGRAMS_PER_PAGE = 10;
+our $ITEMS_PER_REQUEST_PAGE = 10;
 our $PROGRAMS_FILE_NAME = 'programs.txt';
+our $MAX_REQUEST_PAGES = 5;
 
 
 ### Globals
@@ -221,6 +227,15 @@ sub boolean_to_string {
 	return int $_[0]
 		? 'Yes'
 		: 'No';
+}
+
+sub ceiling {
+	my $f = shift;
+	my $i = int $f;
+
+	return $f > $i
+		? 1 + $i
+		: $i;
 }
 
 sub dumpit {
@@ -268,7 +283,7 @@ sub dumpit {
 sub debug {
 	my $title = shift;
 	my $text = shift;
-	
+
 	$title = uc $title;
 	print STDERR "============ $title START ============\n$text\n============= $title END =============\n\n";
 }
@@ -372,8 +387,9 @@ sub set_options_defaults {
 		'output_file'	=> undef,
 		'temp_dir'		=> undef,
 		'id'					=> 0,
-		'yes-all'			=> 0,
+		'yes_all'			=> 0,
 		'config'			=> undef,
+		'max_items'		=> 0,
 	};
 }
 
@@ -428,6 +444,7 @@ sub check_option_command {
 		/^p|pls|playlist|pls|play.?list|m3u|m3u8$/i ? $COMMAND_PLAYLIST :
 		/^i|info|information|inf$/i ? $COMMAND_INFO :
 		/^r|prog|programs$/i ? $COMMAND_PROGRAMS_LIST :
+		/^a|articles$/i ? $COMMAND_PROGRAM_ARTICLES :
 		brag_and_exit "Unknown command $_";
 
 	debug 'command', $options->{'command'} if $options->{'verbose'};
@@ -511,6 +528,18 @@ sub check_option_config {
 	}
 
 	debug 'config', $options->{'config'} if $options->{'verbose'};
+}
+
+sub check_option_max_items {
+	brag_and_exit "Max items number is not a valid number: $options->{'max_items'}"
+		unless $options->{'max_items'} =~ /^\s*\d+\s*$/;
+
+	$options->{'max_items'} = int $options->{'max_items'};
+
+	$options->{'max_items'} = $MAX_REQUEST_PAGES * $ITEMS_PER_REQUEST_PAGE
+		unless $options->{'max_items'};
+
+	debug 'max items', $options->{'max_items'} if $options->{'verbose'};
 }
 
 sub cook_rand_xxxx {
@@ -629,7 +658,6 @@ sub cook_categories_request {
 	}
 }
 
-# TODO: Make sense
 sub cook_programs_request {
 	my $page_number = shift;
 	my $items_per_page = shift;
@@ -651,10 +679,10 @@ sub cook_programs_request {
 	}
 }
 
-# TODO: Make sense
-# TODO: Replace show id with program id
 sub cook_program_articles_request {
 	my $program_id = shift;
+	my $page_number = shift;
+	my $items_per_page = shift;
 
 	{
 		'name'						=> 'articles',
@@ -663,9 +691,13 @@ sub cook_program_articles_request {
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
-			'X-Result-Define-Pagination'	=> '1/20'
+			'X-Result-Define-Pagination'
+				=> $page_number . '/' . $items_per_page,
 		},
 		'error_overrides'	=> {
+			'404'							=> {
+				'error'						=> '404 Not Found',
+			}
 		},
 	}
 }
@@ -682,6 +714,9 @@ sub cook_program_request {
 		'extra_headers'		=> {
 		},
 		'error_overrides'	=> {
+			'404'							=> {
+				'error'						=> '404 Not Found',
+			}
 		},
 	}
 }
@@ -778,8 +813,9 @@ sub read_command_line_options {
 		'output_file|output-file|o=s',
 		'temp_dir|temp-dir|t=s',
 		'id|i',
-		'yes-all|y',
+		'yes_all|yes-all|y',
 		'config|C=s',
+		'max_items|max-items|I=s',
 	);
 
 	undef $error;
@@ -847,6 +883,7 @@ sub interpret_command_line_options {
 	&check_option_output_file;
 	&check_option_temp_dir;
 	&check_option_config;
+	&check_option_max_items;
 
 	debug 'options', dumpit $options if $options->{'verbose'};
 }
@@ -865,6 +902,20 @@ sub get_show_id {
 	}
 
 	debug 'show id', $session->{'show_id'} if $options->{'verbose'};
+}
+
+sub get_program_id {
+	brag_and_exit 'No program ID' unless scalar @ARGV;
+
+	$_ = pop @ARGV;
+
+	if (/^\s*(\d+)\s*$/) {
+		$session->{'program_id'} = $1;
+	} else {
+		brag_and_exit "Invalid program ID";
+	}
+
+	debug 'program id', $session->{'program_id'} if $options->{'verbose'};
 }
 
 sub set_config_file_path {
@@ -968,7 +1019,7 @@ sub link_if_not_linked {
 	return if defined $config->{_}->{'auth'};
 
 	print "Absent / invalid authentication → linking to account\n";
-	
+
 	my $startlinking_response = call_api &cook_startlinking_request;
 
 	print "Linking code:\n  $startlinking_response->{'code'}\n\n$linking_hint";
@@ -1029,20 +1080,20 @@ sub get_categories {
 	$session->{'categories'} = $categories_response;
 
 	debug 'categories', dumpit $session->{'categories'} if $options->{'verbose'};
-}
-
-# TODO: Make sense
-sub get_program_articles {
-	my $articles_response = call_api cook_program_articles_request $session->{'program_id'};
-
-	#brag_and_exit "Article not found\nPlease check show ID / URL" if defined $articles_response->[0]->{'error'};
-
-	#$session->{'articles'} = $articles_response;
-
-	#debug 'articles', dumpit $session->{'articles'} if $options->{'verbose'};
+	# {
+	#   current_page → 1
+	#   elements → {
+	#     1 → Программы
+	#     2 → Архив программ
+	#     3 → Мини-жанр
+	#   }
+	#   total_pages → 1
+	# }
 }
 
 sub get_article {
+	die 'No show id' unless $session->{'show_id'};
+
 	my $article_response = call_api cook_article_request $session->{'show_id'};
 
 	brag_and_exit "Article not found\nPlease check show ID / URL" if defined $article_response->{'error'};
@@ -1056,7 +1107,7 @@ sub get_article {
 }
 
 sub get_program {
-	return unless $session->{'program_id'};
+	die 'No program id' unless $session->{'program_id'};
 
 	my $program_response = call_api cook_program_request $session->{'program_id'};
 
@@ -1087,7 +1138,7 @@ sub guess_article_name_from_videos {
 		# Update common if it is merely a shorter version of challenge
 		$common = $challenge and next if $challenge =~ /^\Q$common\E/;
 
-		# Ignore challenge if it is just a shorter version of common	
+		# Ignore challenge if it is just a shorter version of common
 		next if $common =~ /^\Q$challenge\E/;
 
 		# Video fragment names are significantly different so we give up
@@ -1105,7 +1156,7 @@ sub cook_extension {
 
 	return 'm3u8' if $options->{'command'} eq $COMMAND_PLAYLIST;
 
-	return 'txt' if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
+	return 'txt' if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
 
 	die 'Unsupported command';
 }
@@ -1119,8 +1170,8 @@ sub get_article_name {
 }
 
 sub get_program_name {
-	return undef unless $session->{'program_id'};
-	return undef unless $session->{'program'};
+	die 'No program ID' unless $session->{'program_id'};
+	$_ = $session->{'program_id'} unless $session->{'program'};
 
 	$_ = $session->{'program'}->{'name'};
 
@@ -1215,8 +1266,22 @@ sub cook_article_file_name {
 	}
 }
 
+sub cook_program_file_name {
+	my $name;
+
+	my $ext = &cook_extension;
+
+	my $program_name = $options->{'id'}
+		? $session->{'program_id'}
+		: &clean_string_for_file_name(&get_program_name);
+
+	return fit_name_and_ext_to_file_name $program_name, $ext;
+}
+
 sub cook_file_name {
 	return $PROGRAMS_FILE_NAME if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
+
+	return &cook_program_file_name if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
 
 	return &cook_article_file_name;
 }
@@ -1233,10 +1298,24 @@ sub need_output_path {
 	return 1;
 }
 
-sub going_for_a_video {
+sub need_one_article {
 	return 0 if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
 
+	return 0 if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
+
 	return 1;
+}
+
+sub need_one_program {
+	return 1 if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
+
+	return 0;
+}
+
+sub need_program_id {
+	return 1 if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
+
+	return 0;
 }
 
 sub need_a_temp_dir {
@@ -1562,7 +1641,7 @@ sub info_it {
 
 	for (my $i = 0 ; $i < $number_of_segments; $i++) {
 		my $video = $session->{'videos'}->[$i];
-	
+
 		printf 'Segment #%i:
   Name:        %s
   Duration:    %s
@@ -1582,8 +1661,26 @@ sub print_meter {
 	STDOUT->autoflush(0);
 }
 
+sub reset_after_meter {
+	STDOUT->autoflush(1);
+	print "\n";
+	STDOUT->autoflush(0);
+}
+
+sub cook_pages {
+	my $total_pages = shift;
+
+	die "Bad total pages number $total_pages" if $total_pages < 1;
+
+	my $max_pages = ceiling $options->{'max_items'} / $ITEMS_PER_REQUEST_PAGE;
+
+	return $max_pages < $total_pages
+		? $max_pages
+		: $total_pages;
+}
+
 sub programs_list_it {
-	my $total_pages;
+	my $pages;
 	my $programs_response;
 	my $current_page = 0;
 	my $programs = [];
@@ -1591,15 +1688,17 @@ sub programs_list_it {
 	do {
 		++$current_page;
 
-		$programs_response = call_api cook_programs_request($current_page, $PROGRAMS_PER_PAGE);
+		$programs_response = call_api cook_programs_request($current_page, $ITEMS_PER_REQUEST_PAGE);
 		brag_and_exit "Can not get programs page $current_page" unless $programs_response->{'current_page'};
 
-		$total_pages ||= int $programs_response->{'total_pages'};
+		$pages ||= int $programs_response->{'total_pages'};
 
 		push @{$programs}, @{$programs_response->{'elements'}};
 
-		print_meter "Retrieving programs", $current_page, $total_pages unless $options->{'verbose'};
-	} while( $current_page < $total_pages );
+		print_meter "Retrieving programs", $current_page, $pages unless $options->{'verbose'};
+	} while( $current_page < $pages );
+
+	reset_after_meter unless $options->{'verbose'};
 
 	$session->{'programs'} = $programs;
 
@@ -1614,7 +1713,70 @@ sub programs_list_it {
 			or die "Can not write to output file $session->{'output_path'}";
 	}
 	close PROGRAMS;
+
+	print "$session->{'output_path'}\n";
 }
+
+sub has_video_to_string {
+	return $_[0]
+		? 'Video'
+		: '–';
+}
+
+sub is_full_to_string {
+	return $_[0]
+		? 'Complete show'
+		: 'Fragment';
+}
+
+sub program_articles_it {
+	my $pages;
+	my $articles_response;
+	my $current_page = 0;
+	my $articles = [];
+
+	do {
+		++$current_page;
+
+		$articles_response = call_api cook_program_articles_request(
+			$session->{'program_id'}, $current_page, $ITEMS_PER_REQUEST_PAGE);
+
+		brag_and_exit "No articles found\nPlease check program ID" if defined $articles_response->{'error'};
+		brag_and_exit "Can not get program articles page $current_page" unless $articles_response->{'current_page'};
+
+		$pages ||= cook_pages int $articles_response ->{'total_pages'};
+
+		push @{$articles}, @{$articles_response->{'elements'}};
+
+		print_meter "Retrieving articles", $current_page, $pages unless $options->{'verbose'};
+	} while( $current_page < $pages );
+
+	reset_after_meter unless $options->{'verbose'};
+
+	splice @{$articles}, $options->{'max_items'} if scalar @{$articles} > $options->{'max_items'};
+
+	$session->{'articles'} = $articles;
+
+	debug 'articles', dumpit $session->{'articles'} if $options->{'verbose'};
+
+	my $number_of_articles = scalar @{$session->{'articles'}};
+	printf "Got %i articles\n", $number_of_articles;
+
+	open ARTICLES, "> $session->{'output_path'}" or die "Can not open output file to write $session->{'output_path'}";
+	for (my $i = 0; $i < $number_of_articles; $i++) {
+		printf ARTICLES "%s\t%s\t%s\t%s\t%s\n",
+			$session->{'articles'}->[$i]->{'id'},
+			$session->{'articles'}->[$i]->{'date_active_start'},
+			has_video_to_string($session->{'articles'}->[$i]->{'has_video'}),
+			is_full_to_string($session->{'articles'}->[$i]->{'is_full'}),
+			$session->{'articles'}->[$i]->{'name'}
+			or die "Can not write to output file $session->{'output_path'}";
+	}
+	close ARTICLES;
+
+	print "$session->{'output_path'}\n";
+}
+
 
 sub do_the_job {
 	&merge_it if $options->{'command'} eq $COMMAND_MERGE;
@@ -1626,6 +1788,8 @@ sub do_the_job {
 	&info_it if $options->{'command'} eq $COMMAND_INFO;
 
 	&programs_list_it if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
+
+	&program_articles_it if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
 }
 
 sub main {
@@ -1638,15 +1802,16 @@ sub main {
 	&deal_with_help_requests;
 	&interpret_command_line_options;
 	&decide_on_executables;
-	&get_show_id if &going_for_a_video;
+	&get_show_id if &need_one_article;
+	&get_program_id if &need_program_id;
 	&set_config_file_path;
 	&read_config;
 	&decide_on_temp_dir if need_a_temp_dir;
 	&link_if_not_linked;
 	&get_me_to_check_auth;
-	&get_article if &going_for_a_video;
-	&get_program if &going_for_a_video;
-	&get_videos if &going_for_a_video;
+	&get_article if &need_one_article;
+	&get_program if &need_one_article || &need_one_program;
+	&get_videos if &need_one_article;
 	&decide_on_output_path if &need_output_path;
 	&do_the_job;
 }
