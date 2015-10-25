@@ -1593,12 +1593,17 @@ sub list_video_resolutions {
 	# $session->{'videos'}->[$i]
 	my $video = shift;
 
+	# A workaround for the server returning an empty array instead of hash when there are no video resolutions
+	return 'None' unless ref $video->{'mp4'} eq 'HASH';
+
 	my @resolutions;
 	foreach my $quality ($QUALITY_FH, $QUALITY_HD, $QUALITY_SD, $QUALITY_LO) {
 		push @resolutions, get_quality_name $quality if defined $video->{'mp4'}->{get_quality_url_key $quality};
 	}
 
-	return join ', ', @resolutions;
+	return scalar @resolutions
+		? join ', ', @resolutions
+		: 'None';
 }
 
 sub get_total_duration {
