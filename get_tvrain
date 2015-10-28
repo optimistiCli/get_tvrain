@@ -161,6 +161,7 @@ our $REQUIRED_MODULES = [
 	'IO::Scalar',
 	'Cwd',
 	'IPC::Run3',
+	'Term::ReadKey',
 ];
 our $CONFIG_FILE_NAME = '.get_tvrain.conf';
 our $DEVICE_NAME = 'optimistiCli';
@@ -175,6 +176,7 @@ our $COMMAND_PLAYLIST = 'pls';
 our $COMMAND_INFO = 'info';
 our $COMMAND_PROGRAMS_LIST = 'programs';
 our $COMMAND_PROGRAM_ARTICLES = 'articles';
+our $COMMAND_QUIT = 'quit';
 our $QUALITY_FH = 'fh';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
@@ -199,6 +201,15 @@ our $MERGE_WITH_FFMPEG = 'ffmpeg';
 our $ITEMS_PER_REQUEST_PAGE = 10;
 our $PROGRAMS_FILE_NAME = 'programs.txt';
 our $MAX_REQUEST_PAGES = 5;
+our $COMMAND_PROMPT_DEFAULT_MARKER = '(default) ';
+our $COMMAND_PROMPT_WAIT_SECONDS = 3;
+our $COMMAND_PROMPT_TIME_STEP = .05;
+our $COMMAND_PROMPT_CHAR_TO_COMMAND = {
+	'm'	=> $COMMAND_MERGE,
+	's'	=> $COMMAND_SAVE,
+	'p'	=> $COMMAND_PLAYLIST,
+	'q'	=> $COMMAND_QUIT,
+};
 
 
 ### Globals
@@ -1782,6 +1793,113 @@ sub program_articles_it {
 	print "$session->{'output_path'}\n";
 }
 
+sub cook_command_prompt_matrix {
+	my $default_command = shift;
+	my $count_length = shift;
+
+	die "Bad default command $default_command"
+		unless $default_command eq $COMMAND_MERGE
+		|| $default_command eq $COMMAND_SAVE
+		|| $default_command eq $COMMAND_PLAYLIST
+		|| $default_command eq $COMMAND_QUIT;
+
+	my $merge_is_deafult = $default_command eq $COMMAND_MERGE
+		? $COMMAND_PROMPT_DEFAULT_MARKER
+		: '';
+
+	my $save_is_deafult = $default_command eq $COMMAND_SAVE
+		? $COMMAND_PROMPT_DEFAULT_MARKER
+		: '';
+
+	my $playlist_is_deafult = $default_command eq $COMMAND_PLAYLIST
+		? $COMMAND_PROMPT_DEFAULT_MARKER
+		: '';
+
+	my $quit_is_deafult = $default_command eq $COMMAND_QUIT
+		? $COMMAND_PROMPT_DEFAULT_MARKER
+		: '';
+
+	"\rYou can [m]erge ${merge_is_deafult}or [s]ave ${save_is_deafult}videos, create [p]laylist ${playlist_is_deafult}or [q]uit ${quit_is_deafult}(%${count_length}i): "
+}
+
+sub print_command_prompt {
+	my $command_prompt_matrix = shift;
+	my $count = shift;
+
+	STDOUT->autoflush(1);
+	printf $command_prompt_matrix, $count;
+	STDOUT->autoflush(0);
+}
+
+sub interpret_command_prompt_key {
+	my $default_command = shift;
+	$_ = shift;
+
+	return $default_command unless defined $_;
+
+	my $command = $COMMAND_PROMPT_CHAR_TO_COMMAND->{lc $_};
+	return $command if defined $command;
+
+	return $default_command if /[\r\n]/;
+
+	return undef;
+}
+
+sub cook_command_prompt_input_eval {
+	'use Term::ReadKey; ' .
+	'ReadMode 3; ' .
+	'my $key = ReadKey ' . $COMMAND_PROMPT_TIME_STEP . '; ' .
+	'ReadMode 0; ' .
+	'return $key; '
+}
+
+sub get_command_prompt_input {
+	my $command_prompt_matrix = shift;
+	my $command_prompt_input_eval = shift;
+
+	print "\n";
+
+	my $start_time = time;
+	my $time_left = $COMMAND_PROMPT_WAIT_SECONDS;
+	my $command;
+
+	while ($time_left) {
+		print_command_prompt $command_prompt_matrix, $time_left;
+
+		$_ = eval $command_prompt_input_eval;
+
+		$time_left = $COMMAND_PROMPT_WAIT_SECONDS - (time - $start_time);
+
+		next unless defined $_;
+
+		print $_ unless /[\r\n]/;
+
+		last;
+	}
+
+	print "\n";
+	return $_;
+}
+
+# printf "%s\n", ask_for_further_command $COMMAND_MERGE;
+sub ask_for_further_command {
+	my $default_command = shift;
+
+	my $command_prompt_matrix = cook_command_prompt_matrix $default_command, length "$COMMAND_PROMPT_WAIT_SECONDS";
+	my $command_prompt_input_eval = &cook_command_prompt_input_eval;
+
+	my $command;
+	while (1) {
+		$command = interpret_command_prompt_key $default_command, 
+			get_command_prompt_input $command_prompt_matrix, $command_prompt_input_eval;
+
+		last if defined $command;
+
+		print "Unknown command, please try again\n";
+	}
+
+	return $command;
+}
 
 sub do_the_job {
 	&merge_it if $options->{'command'} eq $COMMAND_MERGE;
