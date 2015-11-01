@@ -177,6 +177,7 @@ our $COMMAND_INFO = 'info';
 our $COMMAND_PROGRAMS_LIST = 'programs';
 our $COMMAND_PROGRAM_ARTICLES = 'articles';
 our $COMMAND_QUIT = 'quit';
+our $COMMAND_INTERACTIVE = 'interactive';
 our $QUALITY_FH = 'fh';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
@@ -202,7 +203,7 @@ our $ITEMS_PER_REQUEST_PAGE = 10;
 our $PROGRAMS_FILE_NAME = 'programs.txt';
 our $MAX_REQUEST_PAGES = 5;
 our $COMMAND_PROMPT_DEFAULT_MARKER = '(default) ';
-our $COMMAND_PROMPT_WAIT_SECONDS = 3;
+our $COMMAND_PROMPT_WAIT_SECONDS = 60;
 our $COMMAND_PROMPT_TIME_STEP = .05;
 our $COMMAND_PROMPT_CHAR_TO_COMMAND = {
 	'm'	=> $COMMAND_MERGE,
@@ -383,6 +384,8 @@ sub init {
 	$cgi_utils = CGI::Utils->new;
 	$user_agent = LWP::UserAgent->new;
 	$json = JSON->new;
+
+	$session->{'command_stack'} = [];
 }
 
 sub set_options_defaults {
@@ -392,7 +395,7 @@ sub set_options_defaults {
 		'verbose'			=> 0,
 		'simulate'		=> 0,
 		'first_run'		=> 0,
-		'command'			=> $COMMAND_MERGE,
+		'command'			=> $COMMAND_INTERACTIVE,
 		'quality'			=> $QUALITY_HD,
 		'output_dir'	=> undef,
 		'output_file'	=> undef,
@@ -447,15 +450,17 @@ sub check_if_dir_is_writeable {
 
 sub check_option_command {
 	# Command should be set, otherwise there is an error
+print ">>>$options->{'command'}<<<\n";
 	$_ = $options->{'command'};
 
 	$options->{'command'} =
-		/^m|merge|mkv|join|matroska$/i ? $COMMAND_MERGE :
-		/^s|save|download|dl|asis|mp4|dump$/i ? $COMMAND_SAVE :
-		/^p|pls|playlist|pls|play.?list|m3u|m3u8$/i ? $COMMAND_PLAYLIST :
-		/^i|info|information|inf$/i ? $COMMAND_INFO :
-		/^r|prog|programs$/i ? $COMMAND_PROGRAMS_LIST :
-		/^a|articles$/i ? $COMMAND_PROGRAM_ARTICLES :
+		/^(?:im|merge|mkv|join|matroska)$/i ? $COMMAND_MERGE :
+		/^(?:is|save|download|dl|asis|mp4|dump)$/i ? $COMMAND_SAVE :
+		/^(?:ip|pls|playlist|pls|play.?list|m3u|m3u8)$/i ? $COMMAND_PLAYLIST :
+		/^(?:ii|info|information|inf)$/i ? $COMMAND_INFO :
+		/^(?:ir|prog|programs)$/i ? $COMMAND_PROGRAMS_LIST :
+		/^(?:ia|articles)$/i ? $COMMAND_PROGRAM_ARTICLES :
+		/^(?:in|interactive)$/i ? $COMMAND_INTERACTIVE :
 		brag_and_exit "Unknown command $_";
 
 	debug 'command', $options->{'command'} if $options->{'verbose'};
@@ -466,10 +471,10 @@ sub check_option_quality {
 	$_ = $options->{'quality'};
 
 	$options->{'quality'} =
-		/^f|fh|fhd|full.*|1080|1080p$/i ? $QUALITY_FH :
-		/^h|hd|hq|high|hi|720|720p$/i ? $QUALITY_HD :
-		/^s|sd|sq|stand.*|std|480|480p$/i ? $QUALITY_SD :
-		/^l|lo|ld|lq|lo|low|360|360p$/i ? $QUALITY_LO :
+		/^(?:if|fh|fhd|full.*|1080|1080p)$/i ? $QUALITY_FH :
+		/^(?:ih|hd|hq|high|hi|720|720p)$/i ? $QUALITY_HD :
+		/^(?:is|sd|sq|stand.*|std|480|480p)$/i ? $QUALITY_SD :
+		/^(?:il|lo|ld|lq|lo|low|360|360p)$/i ? $QUALITY_LO :
 		brag_and_exit "Unknown quality $_";
 
 	debug 'quality', $options->{'quality'} if $options->{'verbose'};
@@ -1306,6 +1311,8 @@ sub cook_output_dir {
 sub need_output_path {
 	return 0 if $options->{'command'} eq $COMMAND_INFO;
 
+	return 0 if $options->{'command'} eq $COMMAND_QUIT;
+
 	return 1;
 }
 
@@ -1331,6 +1338,8 @@ sub need_program_id {
 
 sub need_a_temp_dir {
 	return 1 if $options->{'command'} eq $COMMAND_MERGE;
+
+	return 1 if $options->{'command'} eq $COMMAND_INTERACTIVE;
 
 	return 0;
 }
@@ -1390,6 +1399,8 @@ sub download_url_to_path {
 	undef $?;
 
 	die "Wget failed: " . get_wget_error $wget_exit_code if $wget_exit_code;
+
+	print "$output_path\n";
 }
 
 sub cook_temp_video_path {
@@ -1881,7 +1892,6 @@ sub get_command_prompt_input {
 	return $_;
 }
 
-# printf "%s\n", ask_for_further_command $COMMAND_MERGE;
 sub ask_for_further_command {
 	my $default_command = shift;
 
@@ -1915,6 +1925,37 @@ sub do_the_job {
 	&program_articles_it if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
 }
 
+sub proceed_to_new_command {
+	my $new_command = shift;
+
+	push @{$session->{'command_stack'}}, $options->{'command'};
+
+	$options->{'command'} = $new_command;
+
+	debug 'proceed to new command', $options->{'command'} if $options->{'verbose'};
+	debug 'command stack', dumpit $session->{'command_stack'} if $options->{'verbose'};
+}
+
+sub decide_on_best_article_command {
+	my $number_of_segments = scalar @{$session->{'videos'}};
+
+	brag_and_exit "No video in this article" unless $number_of_segments;
+
+	my $new_command =  $number_of_segments > 1
+		? $COMMAND_MERGE
+		: $COMMAND_SAVE;
+
+	debug 'best article command', $new_command if $options->{'verbose'};
+
+	return $new_command;
+}
+
+sub update_command {
+	&info_it;
+
+	proceed_to_new_command ask_for_further_command &decide_on_best_article_command if $options->{'command'} eq $COMMAND_INTERACTIVE;
+}
+
 sub main {
 	&set_binmode;
 	&guess_if_verbose;
@@ -1935,6 +1976,7 @@ sub main {
 	&get_article if &need_one_article;
 	&get_program if &need_one_article || &need_one_program;
 	&get_videos if &need_one_article;
+	&update_command;
 	&decide_on_output_path if &need_output_path;
 	&do_the_job;
 }
