@@ -1074,7 +1074,7 @@ sub get_me_to_check_auth {
 }
 
 sub get_videos {
-	brag_and_exit 'No video in the show id ' . $session->{'show_id'} unless $session->{'article'}->{'has_video'};
+	return unless $session->{'article'}->{'has_video'};
 
 	my $videos_response = call_api cook_videos_request $session->{'show_id'};
 
@@ -1344,7 +1344,7 @@ sub need_a_temp_dir {
 	return 0;
 }
 
-sub need_video_resolutions {
+sub need_video_urls {
 	return 1 if $options->{'command'} eq $COMMAND_MERGE;
 
 	return 1 if $options->{'command'} eq $COMMAND_SAVE;
@@ -1628,7 +1628,7 @@ sub playlist_it {
 sub video_segment_has_resolutions {
 	my $video = shift;
 
-	return $video->{'mp4'} eq 'HASH';
+	return ref $video->{'mp4'} eq 'HASH';
 }
 
 sub list_video_resolutions {
@@ -1649,6 +1649,8 @@ sub list_video_resolutions {
 }
 
 sub get_total_duration {
+	return 0 unless $session->{'article'}->{'has_video'};
+
 	my $total_ms = 0;
 
 	for (my $i = 0 ; $i < scalar @{$session->{'videos'}}; $i++) {
@@ -1662,7 +1664,9 @@ sub get_total_duration {
 }
 
 sub info_it {
-	my $number_of_segments = scalar @{$session->{'videos'}};
+	my $number_of_segments = $session->{'article'}->{'has_video'}
+		? scalar @{$session->{'videos'}}
+		: 0;
 
 	printf 'Article:
   Program name:   %s
@@ -1948,6 +1952,8 @@ sub do_the_job {
 sub proceed_to_new_command {
 	my $new_command = shift;
 
+	return if $new_command eq $options->{'command'};
+
 	push @{$session->{'command_stack'}}, $options->{'command'};
 
 	$options->{'command'} = $new_command;
@@ -1976,14 +1982,15 @@ sub do_interactive {
 	proceed_to_new_command ask_for_further_command &decide_on_best_article_command;
 }
 
-sub update_command {
-	&check_if_all_videos_have_resolutions if &need_video_resolutions;
+sub change_to_info_if_no_video {
+	return if $session->{'article'}->{'has_video'};
 
-	&do_interactive if $options->{'command'} eq $COMMAND_INTERACTIVE;
+	printf "NO VIDEO: Server says there's no video in this article.\n\n";
+	proceed_to_new_command $COMMAND_INFO;
 }
 
 # A workaround for a serverside bug
-sub check_if_all_videos_have_resolutions {
+sub change_to_info_unless_got_resolutions {
 	foreach my $video (@{$session->{'videos'}}) {
 		unless (video_segment_has_resolutions $video) {
 			print "SERVER ERROR: No video URL(s) for at least one segment, see below.\n\n";
@@ -1991,6 +1998,14 @@ sub check_if_all_videos_have_resolutions {
 			return;
 		}
 	}
+}
+
+sub update_command {
+	&change_to_info_if_no_video if &need_video_urls;
+
+	&change_to_info_unless_got_resolutions if &need_video_urls;
+
+	&do_interactive if $options->{'command'} eq $COMMAND_INTERACTIVE;
 }
 
 sub main {
