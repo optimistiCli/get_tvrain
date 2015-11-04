@@ -454,13 +454,13 @@ sub check_option_command {
 	$_ = $options->{'command'};
 
 	$options->{'command'} =
-		/^(?:im|merge|mkv|join|matroska)$/i ? $COMMAND_MERGE :
-		/^(?:is|save|download|dl|asis|mp4|dump)$/i ? $COMMAND_SAVE :
-		/^(?:ip|pls|playlist|pls|play.?list|m3u|m3u8)$/i ? $COMMAND_PLAYLIST :
-		/^(?:ii|info|information|inf)$/i ? $COMMAND_INFO :
-		/^(?:ir|prog|programs)$/i ? $COMMAND_PROGRAMS_LIST :
-		/^(?:ia|articles)$/i ? $COMMAND_PROGRAM_ARTICLES :
-		/^(?:in|interactive)$/i ? $COMMAND_INTERACTIVE :
+		/^(?:m|merge|mkv|join|matroska)$/i ? $COMMAND_MERGE :
+		/^(?:s|save|download|dl|asis|mp4|dump)$/i ? $COMMAND_SAVE :
+		/^(?:p|pls|playlist|pls|play.?list|m3u|m3u8)$/i ? $COMMAND_PLAYLIST :
+		/^(?:i|info|information|inf)$/i ? $COMMAND_INFO :
+		/^(?:r|prog|programs)$/i ? $COMMAND_PROGRAMS_LIST :
+		/^(?:a|articles)$/i ? $COMMAND_PROGRAM_ARTICLES :
+		/^(?:n|interactive)$/i ? $COMMAND_INTERACTIVE :
 		brag_and_exit "Unknown command $_";
 
 	debug 'command', $options->{'command'} if $options->{'verbose'};
@@ -1070,7 +1070,7 @@ sub get_me_to_check_auth {
 
 	brag_and_exit "Subscription expired :-(\nPlease visit TVRain.ru and pay them, then come back." if $session->{'me'}->{'vip'} < 0;
 
-	print "Login Ok, subscription active for $session->{'me'}->{'vip'} more days\n";
+	print "Login Ok, subscription active for $session->{'me'}->{'vip'} more days\n\n";
 }
 
 sub get_videos {
