@@ -450,7 +450,7 @@ sub check_if_dir_is_writeable {
 
 sub check_option_command {
 	# Command should be set, otherwise there is an error
-print ">>>$options->{'command'}<<<\n";
+
 	$_ = $options->{'command'};
 
 	$options->{'command'} =
@@ -1344,6 +1344,19 @@ sub need_a_temp_dir {
 	return 0;
 }
 
+sub need_video_resolutions {
+	return 1 if $options->{'command'} eq $COMMAND_MERGE;
+
+	return 1 if $options->{'command'} eq $COMMAND_SAVE;
+
+	return 1 if $options->{'command'} eq $COMMAND_PLAYLIST;
+
+	return 1 if $options->{'command'} eq $COMMAND_INTERACTIVE;
+
+	return 0;
+}
+
+# TODO: Make as many paths here as command actualy requires
 sub decide_on_output_path {
 	$session->{'output_path'} = defined $options->{'output_file'}
 		? $options->{'output_file'}
@@ -1611,12 +1624,19 @@ sub playlist_it {
 	print "$session->{'output_path'}\n";
 }
 
+# Part of server error workaround
+sub video_segment_has_resolutions {
+	my $video = shift;
+
+	return $video->{'mp4'} eq 'HASH';
+}
+
 sub list_video_resolutions {
 	# $session->{'videos'}->[$i]
 	my $video = shift;
 
 	# A workaround for the server returning an empty array instead of hash when there are no video resolutions
-	return 'None' unless ref $video->{'mp4'} eq 'HASH';
+	return 'None' unless video_segment_has_resolutions $video;
 
 	my @resolutions;
 	foreach my $quality ($QUALITY_FH, $QUALITY_HD, $QUALITY_SD, $QUALITY_LO) {
@@ -1950,10 +1970,27 @@ sub decide_on_best_article_command {
 	return $new_command;
 }
 
-sub update_command {
+sub do_interactive {
 	&info_it;
 
-	proceed_to_new_command ask_for_further_command &decide_on_best_article_command if $options->{'command'} eq $COMMAND_INTERACTIVE;
+	proceed_to_new_command ask_for_further_command &decide_on_best_article_command;
+}
+
+sub update_command {
+	&check_if_all_videos_have_resolutions if &need_video_resolutions;
+
+	&do_interactive if $options->{'command'} eq $COMMAND_INTERACTIVE;
+}
+
+# A workaround for a serverside bug
+sub check_if_all_videos_have_resolutions {
+	foreach my $video (@{$session->{'videos'}}) {
+		unless (video_segment_has_resolutions $video) {
+			print "SERVER ERROR: No video URL(s) for at least one segment, see below.\n\n";
+			proceed_to_new_command $COMMAND_INFO;
+			return;
+		}
+	}
 }
 
 sub main {
