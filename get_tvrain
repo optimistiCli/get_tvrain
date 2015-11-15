@@ -203,7 +203,7 @@ our $ITEMS_PER_REQUEST_PAGE = 10;
 our $PROGRAMS_FILE_NAME = 'programs.txt';
 our $MAX_REQUEST_PAGES = 5;
 our $COMMAND_PROMPT_DEFAULT_MARKER = '(default) ';
-our $COMMAND_PROMPT_WAIT_SECONDS = 60;
+our $DEFAULT_WAIT_FOR_INPUT = 60;
 our $COMMAND_PROMPT_TIME_STEP = .05;
 our $COMMAND_PROMPT_CHAR_TO_COMMAND = {
 	'm'	=> $COMMAND_MERGE,
@@ -393,20 +393,21 @@ sub init {
 
 sub set_options_defaults {
 	$options = {
-		'help'				=> 0,
-		'long_help'		=> 0,
-		'verbose'			=> 0,
-		'simulate'		=> 0,
-		'first_run'		=> 0,
-		'command'			=> $COMMAND_INTERACTIVE,
-		'quality'			=> $QUALITY_HD,
-		'output_dir'	=> undef,
-		'output_file'	=> undef,
-		'temp_dir'		=> undef,
-		'id'					=> 0,
-		'yes_all'			=> 0,
-		'config'			=> undef,
-		'max_items'		=> 0,
+		'help'						=> 0,
+		'long_help'				=> 0,
+		'verbose'					=> 0,
+		'simulate'				=> 0,
+		'first_run'				=> 0,
+		'command'					=> $COMMAND_INTERACTIVE,
+		'quality'					=> $QUALITY_HD,
+		'output_dir'			=> undef,
+		'output_file'			=> undef,
+		'temp_dir'				=> undef,
+		'id'							=> 0,
+		'yes_all'					=> 0,
+		'config'					=> undef,
+		'max_items'				=> 0,
+		'wait_for_input'	=> $DEFAULT_WAIT_FOR_INPUT,
 	};
 }
 
@@ -835,6 +836,7 @@ sub read_command_line_options {
 		'yes_all|yes-all|y',
 		'config|C=s',
 		'max_items|max-items|I=s',
+		'wait_for_input|wait-for-input|W=s',
 	);
 
 	undef $error;
@@ -894,6 +896,14 @@ sub deal_with_help_requests {
 	&brag_and_exit if $options->{'help'};
 }
 
+sub check_option_wait_for_input {
+	brag_and_exit "Wait for input is not a valid number: $options->{'wait_for_input'}"
+		unless $options->{'wait_for_input'} =~ /^\s*\d+\s*$/;
+
+	$options->{'wait_for_input'} = int $options->{'wait_for_input'};
+
+	debug 'wait for input', $options->{'wait_for_input'} if $options->{'verbose'};
+}
 
 sub interpret_command_line_options {
 	&check_option_command;
@@ -903,6 +913,7 @@ sub interpret_command_line_options {
 	&check_option_temp_dir;
 	&check_option_config;
 	&check_option_max_items;
+	&check_option_wait_for_input;
 
 	debug 'options', dumpit $options if $options->{'verbose'};
 }
@@ -1908,7 +1919,7 @@ sub get_command_prompt_input {
 	print "\n";
 
 	my $start_time = time;
-	my $time_left = $COMMAND_PROMPT_WAIT_SECONDS;
+	my $time_left = $options->{'wait_for_input'};
 	my $command;
 
 	while ($time_left) {
@@ -1916,7 +1927,7 @@ sub get_command_prompt_input {
 
 		$_ = eval $command_prompt_input_eval;
 
-		$time_left = $COMMAND_PROMPT_WAIT_SECONDS - (time - $start_time);
+		$time_left = $options->{'wait_for_input'} - (time - $start_time);
 
 		next unless defined $_;
 
@@ -1932,7 +1943,9 @@ sub get_command_prompt_input {
 sub ask_for_further_command {
 	my $default_command = shift;
 
-	my $command_prompt_matrix = cook_command_prompt_matrix $default_command, length "$COMMAND_PROMPT_WAIT_SECONDS";
+	return $default_command unless $options->{'wait_for_input'};
+
+	my $command_prompt_matrix = cook_command_prompt_matrix $default_command, length "$options->{'wait_for_input'}";
 	my $command_prompt_input_eval = &cook_command_prompt_input_eval;
 
 	my $command;
