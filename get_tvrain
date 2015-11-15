@@ -211,6 +211,9 @@ our $COMMAND_PROMPT_CHAR_TO_COMMAND = {
 	'p'	=> $COMMAND_PLAYLIST,
 	'q'	=> $COMMAND_QUIT,
 };
+our $VIDEO_CANT_BE_SO_SMALL = 1 * 1024 * 1024;
+our $SECONDS_BETWEEN_SAME_VIDEO_RETRIES = 12;
+our $SAME_VIDEO_MAX_RETRIES = 12;
 
 
 ### Globals
@@ -1407,11 +1410,21 @@ sub download_url_to_path {
 
 	debug 'wget call', join "\n", @$wget_call if $options->{'verbose'};
 
-	IPC::Run3::run3($wget_call) unless $options->{'simulate'};
-	my $wget_exit_code = $? >> 8;
-	undef $?;
+	my $try_number = 0;
+	until (-f $output_path) {
+		brag_and_exit "Can't get video segment witin a reasonable number of retries" if ++$try_number >= $SAME_VIDEO_MAX_RETRIES;
 
-	die "Wget failed: " . get_wget_error $wget_exit_code if $wget_exit_code;
+		IPC::Run3::run3($wget_call) unless $options->{'simulate'};
+		my $wget_exit_code = $? >> 8;
+		undef $?;
+
+		die "Wget failed: " . get_wget_error $wget_exit_code if $wget_exit_code;
+
+		# Check if server returned a video or just an error-placeholder
+		last if -s $output_path > $VIDEO_CANT_BE_SO_SMALL;
+		unlink $output_path;
+		sleep $SECONDS_BETWEEN_SAME_VIDEO_RETRIES;
+	}
 
 	print "$output_path\n";
 }
