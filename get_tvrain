@@ -28,7 +28,7 @@ our $usage = 'Usage:
 
 TVRain.ru show archive command line client. Legitimate paying users only!
 
-To download a show in current directory run:
+To download a show in current directory:
   get_tvrain http://tvrain.ru/teleshow/reportazh/the_rain_is_falling-123456/
 
 To get detailed options description run:
@@ -67,7 +67,8 @@ Options:
   -t Use specified directory to temporarily store downloaded video parts for
      the "merge" command, if omitted looks up temp_dir in the configuration
      file, which defaults to the current directory
-  -i Use show ID for the file(s) name
+  -i Use show (or program) ID for the file(s) name; has no effect with 
+     "programs" command
   -W The ammount of time in seconds to wait for a user input executing the 
      "interactice" command; if set to 0 procedes to execute suggested 
      command right away (good for use in scripts)
@@ -79,9 +80,16 @@ Options:
   -S Simulate, do not actualy download anything
 
 Examples:
+  Print out article information and exit.
+  get_tvrain -c i /tmp http://tvrain.ru/teleshow/program/article-123456/
+
+  Download a show without user interaction with "save" command if it has one 
+  segment or with "merge" command if there are two or more segments.
+  get_tvrain -W 0 /tmp http://tvrain.ru/teleshow/program/article-123456/
+
   Download a show by URL, if video consists of several parts merge them
   together. Use /tmp to store temporary files.
-  get_tvrain -t /tmp http://tvrain.ru/teleshow/reportazh/falling_rain-123456/
+  get_tvrain -t /tmp http://tvrain.ru/teleshow/program/article-123456/
 
   Download a show known by its ID to the Desktop. Select low bitrate to
   preserve the bandwidth. If there are several video files save them
@@ -91,6 +99,15 @@ Examples:
   Create a custom-named playlist of the standard definition videos. If a
   playlist by the same name already exists overwrite it.
   get_tvrain -q sd -o /mnt/autoplay/tvrain.pls -c pls -y 123456
+
+  Save a full list of the TVRain programs to a text file named program.txt in 
+  the /tmp directory. Note: this might take a while.
+  get_tvrain -c r -d /tmp
+
+  Save the list of 23 latest articles of the program identified by program ID 
+  "1234" to a text file in the current directory. You can use "programs" 
+  command to get full list of programs with their IDs.
+  get_tvrain -c r -I 23 1234
 
 Requirements:
   A few perl modules off CPAN are required. If they are missing the program
@@ -112,7 +129,7 @@ Configuration file:
       client is linked to TVRain.ru user account as a part of the first run
       routine.
     temp_dir
-      The directory to temporarily store downloaded video parts for the
+      The directory to temporarily store downloaded video segments for the
       "merge" command. Please make sure the directory is on a reasonably fast
       storage device (ie the use of thumb drives and flash cards is
       discouraged) and that it has enough free space (4Gb would do). If not
@@ -208,9 +225,9 @@ our @WGET_ERRORS = (
 );
 our $MERGE_WITH_MKVMERGE = 'mkvmerge';
 our $MERGE_WITH_FFMPEG = 'ffmpeg';
-our $ITEMS_PER_REQUEST_PAGE = 10;
+our $ITEMS_PER_REQUEST_PAGE = 50;
 our $PROGRAMS_FILE_NAME = 'programs.txt';
-our $MAX_REQUEST_PAGES = 5;
+our $MAX_REQUEST_PAGES = 2;
 our $COMMAND_PROMPT_DEFAULT_MARKER = '(default) ';
 our $DEFAULT_WAIT_FOR_INPUT = 60;
 our $COMMAND_PROMPT_TIME_STEP = .05;
