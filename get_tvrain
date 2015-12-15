@@ -19,23 +19,25 @@ use open IO  => ":encoding(utf8)";
 ###  7. Process a list of video ids, either from command line of from a file
 ###  8. Add option to output playlist to STDOUT (-o -)
 
-our $usage = 'Usage:
+our $usage = << 'EOH';
+TVRain.ru show archive command line client. Legitimate paying users only!
+
+Usage:
   get_tvrain [-h|--long-help] 
   [-c <interactive|merge|save|pls|info|programs|articles>] [-q <fhd|hd|sd|lo>]
   [-d <output dir>] [-o <output file name>] [-t <temp dir>] [-i] 
   [-C <config file>] [-I <max items>] [-v] [-F] [-S]
   <Show ID | Page with video URL | Program ID>
 
-TVRain.ru show archive command line client. Legitimate paying users only!
-
 To download a show in current directory:
   get_tvrain http://tvrain.ru/teleshow/reportazh/the_rain_is_falling-123456/
 
-To get detailed options description run:
+To get detailed options description:
   get_tvrain --long-help
-';
+EOH
 
-our $long_help = $usage . '
+our $long_help = << 'EOLH';
+
 Options:
   -h Show usage and exit
   -c Command, instructs get_tvrain what to do
@@ -151,7 +153,7 @@ Linking:
   should be "linked" to an active paid user account. Linking happens during
   the first run and requires internet access and user interaction.
 
-';
+EOLH
 
 our $linking_hint = 'Q What to do next?
 A 1. Open http://tvrain.ru/profile/ in a brwoser
@@ -915,7 +917,7 @@ sub decide_on_executables {
 }
 
 sub deal_with_help_requests {
-	print $long_help and exit if $options->{'long_help'};
+	print $usage . $long_help and exit if $options->{'long_help'};
 
 	&brag_and_exit if $options->{'help'};
 }
