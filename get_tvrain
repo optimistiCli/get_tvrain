@@ -24,9 +24,9 @@ TVRain.ru show archive command line client. Legitimate paying users only!
 
 Usage:
   get_tvrain [-h|--long-help] 
-  [-c <interactive|merge|save|pls|info|programs|articles>] [-q <fhd|hd|sd|lo>]
-  [-d <output dir>] [-o <output file name>] [-t <temp dir>] [-i] 
-  [-C <config file>] [-I <max items>] [-v] [-F] [-S]
+  [-c <interactive|merge|save|pls|info|archive|programs|articles>]
+  [-q <fhd|hd|sd|lo>] [-d <output dir>] [-o <output file name>] [-t <temp dir>]
+  [-i] [-C <config file>] [-I <max items>] [-v] [-F] [-S]
   <Show ID | Page with video URL | Program ID>
 
 To download a show in current directory:
@@ -54,6 +54,8 @@ Options:
        Retreiving information (no videos downloaded):
        p|pls         - saves a playlist with video URLs
        i|info        - prints out video informaton
+       h|archive     - saves list of latest archive articles as a text file;
+                       see -I for max number of items
        r|programs    - saves full list of available programs as a text file
        a|articles    - saves list of articles by a program ID as a text file;
                        see -I for max number of items
@@ -70,13 +72,13 @@ Options:
      the "merge" command, if omitted looks up temp_dir in the configuration
      file, which defaults to the current directory
   -i Use show (or program) ID for the file(s) name; has no effect with 
-     "programs" command
+     "archive" and "programs" commands
   -W The ammount of time in seconds to wait for a user input executing the 
-     "interactice" command; if set to 0 procedes to execute suggested 
+     "interactive" command; if set to 0 procedes to execute suggested 
      command right away (good for use in scripts)
   -C Use specified configuration file instead of the default one
-  -I Max number of items retrieved from the server; applies to the articles
-     command; if ommited defaults to a reasonable number
+  -I Max number of items retrieved from the server; applies to the "archive"
+     and "articles" commands; if ommited defaults to a reasonable number
   -v Verbose output, prints a lot of debugging stuff to STDERR
   -F Force first run, resets all options, see below
   -S Simulate, do not actualy download anything
@@ -98,18 +100,21 @@ Examples:
   separately. Name files using show ID.
   get_tvrain -d ~/Desktop -q lo -c save -i 123456
 
-  Create a custom-named playlist of the standard definition videos. If a
-  playlist by the same name already exists overwrite it.
-  get_tvrain -q sd -o /mnt/autoplay/tvrain.pls -c pls -y 123456
+  Create a custom-named playlist of the standard definition videos.
+  get_tvrain -q sd -o /mnt/autoplay/tvrain.pls -c pls 123456
+
+  Save the list of 23 latest articles in the archive as of now and name the
+  file accordingly (assuming bash and sane date).
+  get_tvrain -c h -I 23 -o '23-latest-articles-as-of-'`date +%Y.%m.%d_%H.%M.%S`
 
   Save a full list of the TVRain programs to a text file named program.txt in 
   the /tmp directory. Note: this might take a while.
   get_tvrain -c r -d /tmp
 
-  Save the list of 23 latest articles of the program identified by program ID 
+  Save the list of 17 latest articles of the program identified by program ID 
   "1234" to a text file in the current directory. You can use "programs" 
   command to get full list of programs with their IDs.
-  get_tvrain -c r -I 23 1234
+  get_tvrain -c r -I 17 1234
 
 Requirements:
   A few perl modules off CPAN are required. If they are missing the program
@@ -206,6 +211,7 @@ our $COMMAND_PROGRAMS_LIST = 'programs';
 our $COMMAND_PROGRAM_ARTICLES = 'articles';
 our $COMMAND_QUIT = 'quit';
 our $COMMAND_INTERACTIVE = 'interactive';
+our $COMMAND_ARCHIVE = 'archive';
 our $QUALITY_FH = 'fh';
 our $QUALITY_HD = 'hd';
 our $QUALITY_SD = 'sd';
@@ -229,6 +235,7 @@ our $MERGE_WITH_MKVMERGE = 'mkvmerge';
 our $MERGE_WITH_FFMPEG = 'ffmpeg';
 our $ITEMS_PER_REQUEST_PAGE = 50;
 our $PROGRAMS_FILE_NAME = 'programs.txt';
+our $ARCHIVE_FILE_NAME = 'archive.txt';
 our $MAX_REQUEST_PAGES = 2;
 our $COMMAND_PROMPT_DEFAULT_MARKER = '(default) ';
 our $DEFAULT_WAIT_FOR_INPUT = 60;
@@ -492,6 +499,7 @@ sub check_option_command {
 		/^(?:r|prog|programs)$/i ? $COMMAND_PROGRAMS_LIST :
 		/^(?:a|articles)$/i ? $COMMAND_PROGRAM_ARTICLES :
 		/^(?:n|interactive)$/i ? $COMMAND_INTERACTIVE :
+		/^(?:h|arch|arh|archive)$/i ? $COMMAND_ARCHIVE :
 		brag_and_exit "Unknown command $_";
 
 	debug 'command', $options->{'command'} if $options->{'verbose'};
@@ -713,6 +721,27 @@ sub cook_programs_request {
 		'name'						=> 'programs',
 		'method'					=> 'GET',
 		'url'							=> "$API_URL_BASE/programs/",
+		'post_params'			=> {
+		},
+		'extra_headers'		=> {
+			'X-Result-Define-Thumb-Width'		=> '380',
+			'X-Result-Define-Thumb-height'	=> '240',
+			'X-Result-Define-Pagination'
+				=> $page_number . '/' . $items_per_page,
+		},
+		'error_overrides'	=> {
+		},
+	}
+}
+
+sub cook_archive_request {
+	my $page_number = shift;
+	my $items_per_page = shift;
+
+	{
+		'name'						=> 'archive',
+		'method'					=> 'GET',
+		'url'							=> "$API_URL_BASE/archive/",
 		'post_params'			=> {
 		},
 		'extra_headers'		=> {
@@ -1337,6 +1366,9 @@ sub cook_program_file_name {
 sub cook_file_name {
 	return $PROGRAMS_FILE_NAME if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
 
+	# // TODO: Cook archive file name based on date / time and number of articles
+	return $ARCHIVE_FILE_NAME if $options->{'command'} eq $COMMAND_ARCHIVE;
+
 	return &cook_program_file_name if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
 
 	return &cook_article_file_name;
@@ -1358,6 +1390,8 @@ sub need_output_path {
 
 sub need_one_article {
 	return 0 if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
+
+	return 0 if $options->{'command'} eq $COMMAND_ARCHIVE;
 
 	return 0 if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
 
@@ -1818,6 +1852,54 @@ sub programs_list_it {
 	print "$session->{'output_path'}\n";
 }
 
+sub archive_it {
+	# // TODO: Implement
+	my $pages;
+	my $archive_response;
+	my $current_page = 0;
+	my $archive_articles = [];
+
+	do {
+		++$current_page;
+
+		$archive_response = call_api cook_archive_request($current_page, $ITEMS_PER_REQUEST_PAGE);
+		brag_and_exit "Can not get archive page $current_page" unless $archive_response->{'current_page'};
+
+		$pages ||= cook_pages  int $archive_response->{'total_pages'};
+
+		push @{$archive_articles}, @{$archive_response->{'elements'}};
+
+		print_meter "Retrieving archive", $current_page, $pages unless $options->{'verbose'};
+	} while( $current_page < $pages );
+
+	reset_after_meter unless $options->{'verbose'};
+
+	splice @{$archive_articles}, $options->{'max_items'} if scalar @{$archive_articles} > $options->{'max_items'};
+
+	$session->{'archive_articles'} = $archive_articles;
+
+	debug 'archive', dumpit $session->{'archive_articles'} if $options->{'verbose'};
+
+	my $number_of_archive_articles = scalar @{$session->{'archive_articles'}};
+	printf "Got %i archive articles\n", $number_of_archive_articles;
+
+	# // TODO: Figure out output data format
+	open ARCHIVE, "> $session->{'output_path'}" or die "Can not open output file to write $session->{'output_path'}";
+	for (my $i = 0; $i < $number_of_archive_articles; $i++) {
+		printf ARCHIVE "%s\t%s\t%s\t%s\t%s\n",
+			$session->{'archive_articles'}->[$i]->{'id'},
+			$session->{'archive_articles'}->[$i]->{'date_active_start'},
+			has_video_to_string($session->{'archive_articles'}->[$i]->{'has_video'}),
+			is_full_to_string($session->{'archive_articles'}->[$i]->{'is_full'}),
+			$session->{'archive_articles'}->[$i]->{'name'}
+			or die "Can not write to output file $session->{'output_path'}";
+	}
+	close ARCHIVE;
+
+	print "$session->{'output_path'}\n";
+
+}
+
 sub has_video_to_string {
 	return $_[0]
 		? 'Video'
@@ -1997,6 +2079,8 @@ sub do_the_job {
 	&info_it if $options->{'command'} eq $COMMAND_INFO;
 
 	&programs_list_it if $options->{'command'} eq $COMMAND_PROGRAMS_LIST;
+
+	&archive_it if $options->{'command'} eq $COMMAND_ARCHIVE;
 
 	&program_articles_it if $options->{'command'} eq $COMMAND_PROGRAM_ARTICLES;
 }
