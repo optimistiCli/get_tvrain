@@ -105,7 +105,7 @@ Examples:
 
   Save the list of 23 latest articles in the archive as of now and name the
   file accordingly (assuming bash and sane date).
-  get_tvrain -c h -I 23 -o '23-latest-articles-as-of-'`date +%Y.%m.%d_%H.%M.%S`
+  get_tvrain -c h -I 23 -o 23_latest_articles_as_of_$(date +%Y.%m.%d_%H.%M).txt
 
   Save a full list of the TVRain programs to a text file named program.txt in 
   the /tmp directory. Note: this might take a while.
@@ -1853,7 +1853,6 @@ sub programs_list_it {
 }
 
 sub archive_it {
-	# // TODO: Implement
 	my $pages;
 	my $archive_response;
 	my $current_page = 0;
@@ -1883,7 +1882,6 @@ sub archive_it {
 	my $number_of_archive_articles = scalar @{$session->{'archive_articles'}};
 	printf "Got %i archive articles\n", $number_of_archive_articles;
 
-	# // TODO: Figure out output data format
 	open ARCHIVE, "> $session->{'output_path'}" or die "Can not open output file to write $session->{'output_path'}";
 	for (my $i = 0; $i < $number_of_archive_articles; $i++) {
 		printf ARCHIVE "%s\t%s\t%s\t%s\t%s\n",
