@@ -8,7 +8,6 @@ use utf8;
 use strict;
 use open IO  => ":encoding(utf8)";
 
-
 ### TODOs:
 ###  1. Add config and command line options to set merger
 ###  2. Use curl if there's no wget
@@ -195,6 +194,7 @@ our $REQUIRED_MODULES = [
 	'Cwd',
 	'IPC::Run3',
 	'Term::ReadKey',
+	'Date::Language',
 ];
 our $CONFIG_FILE_NAME = '.get_tvrain.conf';
 our $DEVICE_NAME = 'optimistiCli';
@@ -261,6 +261,8 @@ our $session;	# Session-wide values
 our $cgi_utils;
 our $user_agent;
 our $json;
+our $date_russian;
+our $date_english; # It's a workaround: time2str from Date::Language->Russian  misinterprets %m in perl 5.18.2 on mac os x 10.10
 
 
 ### Functions
@@ -416,12 +418,19 @@ sub millisec_to_human_readeble {
 	sprintf '%02i:%02i:%02i.%03i', $hours, $minutes, $seconds, $millisec;
 }
 
+sub epoch_to_msk_string {
+	my $epoch = shift;
+	$date_english->time2str('%Y-%m-%d %T MSK', $epoch, 'MSK');
+}
+
 sub init {
 	Getopt::Long::Configure ('no_ignore_case', 'require_order', 'bundling');
 
 	$cgi_utils = CGI::Utils->new;
 	$user_agent = LWP::UserAgent->new;
 	$json = JSON->new;
+	$date_russian = Date::Language->new('Russian');
+	$date_english = Date::Language->new('English');
 
 	$session->{'command_stack'} = [];
 }
@@ -538,7 +547,7 @@ sub check_if_file_is_writeable {
 
 		brag_and_exit "$description is not a file '$file_path'" unless -f $file_path;
 
-		# TODO: Simlinks get through the -f above. Decide if they need some special tratment.
+		# TODO: Simlinks get through the -f above. Decide if they need some special treatment.
 
 		brag_and_exit "$description can not be overwritten '$file_path'" unless -w $file_path;
 	} else {
@@ -1191,6 +1200,22 @@ sub get_article {
 	debug 'article', dumpit $session->{'article'} if $options->{'verbose'};
 }
 
+sub parse_article_timestamp {
+	# TODO: gracefully fail if parsing goes the awy of dodo
+	$session->{'article'}->{'timestamp'} = $date_russian->str2time($session->{'article'}->{'date_active_start'} . ' MSK');
+}
+
+sub format_date_active_start {
+	$session->{'article'}->{'date_active_start'} = epoch_to_msk_string $session->{'article'}->{'timestamp'};
+}
+
+sub post_process_article {
+	&parse_article_timestamp;
+	&format_date_active_start;
+
+	debug 'post-processed article', dumpit $session->{'article'} if $options->{'verbose'};
+}
+
 sub get_program {
 	die 'No program id' unless $session->{'program_id'};
 
@@ -1468,6 +1493,12 @@ sub get_wget_error {
 	return 'Unrecognized error';
 }
 
+sub set_article_file_mtime {
+	my $article_file = shift;
+	brag_and_exit "Can't set article file timestamp: $article_file" 
+		unless utime undef, $session->{'article'}->{'timestamp'}, $article_file;
+}
+
 sub download_url_to_path {
 	my $url = shift;
 	my $output_path = shift;
@@ -1620,6 +1651,8 @@ sub merge_temp_videos_with_mkvmerge {
 sub merge_temp_videos {
 	&merge_temp_videos_with_mkvmerge if $session->{'merge_with'} eq $MERGE_WITH_MKVMERGE;
 	&merge_temp_videos_with_ffmpeg if $session->{'merge_with'} eq $MERGE_WITH_FFMPEG;
+
+	set_article_file_mtime $session->{'output_path'};
 }
 
 sub delete_temp_videos {
@@ -1649,6 +1682,7 @@ sub download_video_to_save {
 	my $save_to_path = sprintf '%s%02i-%s', $1, $number + 1, $2;
 
 	download_url_to_path $url, $save_to_path;
+	set_article_file_mtime $save_to_path;
 }
 
 sub save_several_videos {
@@ -1663,6 +1697,7 @@ sub save_one_video {
 	my $url = $video->{'mp4'}->{get_quality_url_key $options->{'quality'}};
 
 	download_url_to_path $url, $session->{'output_path'};
+	set_article_file_mtime $session->{'output_path'};
 }
 
 sub save_it {
@@ -1777,7 +1812,7 @@ sub info_it {
 	for (my $i = 0 ; $i < $number_of_segments; $i++) {
 		my $video = $session->{'videos'}->[$i];
 
-		printf 'Segment #%i:
+    printf 'Segment #%i:
   Name:        %s
   Duration:    %s
   Resolutions: %s
@@ -2160,6 +2195,7 @@ sub main {
 	&link_if_not_linked;
 	&get_me_to_check_auth;
 	&get_article if &need_one_article;
+	&post_process_article if &need_one_article;
 	&get_program if &need_one_article || &need_one_program;
 	&get_videos if &need_one_article;
 	&update_command;
