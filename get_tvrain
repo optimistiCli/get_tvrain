@@ -991,6 +991,8 @@ sub get_show_id {
 		$session->{'show_id'} = $_;
 	} elsif (/tvrain\.ru.*-(\d+)\/?$/) {
 		$session->{'show_id'} = $1;
+	} elsif (/tvrain\.ru.*\/(\d+)(?:\?\w+=.*)?$/) {
+		$session->{'show_id'} = $1;
 	} else {
 		brag_and_exit "Invalid show ID or URL";
 	}
