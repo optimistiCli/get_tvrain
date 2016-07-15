@@ -469,7 +469,7 @@ sub get_file_creation_error {
 	return undef;
 }
 
-sub get_dir_wrieable_error {
+sub get_dir_writeable_error {
 	my $dir_path = shift;
 	my $description = shift;
 
@@ -488,7 +488,7 @@ sub check_if_dir_is_writeable {
 
 	return unless defined $dir_path;
 
-	my $dir_wrieable_error = get_dir_wrieable_error $dir_path, $description;
+	my $dir_wrieable_error = get_dir_writeable_error $dir_path, $description;
 
 	brag_and_exit $dir_wrieable_error if defined $dir_wrieable_error;
 
@@ -1076,7 +1076,7 @@ sub ask_user_for_deafult_temp_dir {
 			$temp_dir = File::HomeDir->my_home . $1;
 		}
 
-		$dir_wrieable_error = get_dir_wrieable_error $temp_dir, 'Default temporary directory';
+		$dir_wrieable_error = get_dir_writeable_error $temp_dir, 'Default temporary directory';
 
 		print $dir_wrieable_error, "\n\n" if defined $dir_wrieable_error;
 	} while (defined $dir_wrieable_error);
