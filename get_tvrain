@@ -515,7 +515,6 @@ sub check_option_command {
 }
 
 sub check_option_quality {
-	# Quality should be set, otherwise there is an error
 	$_ = $options->{'quality'};
 
 	$options->{'quality'} =
