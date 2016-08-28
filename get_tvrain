@@ -887,7 +887,7 @@ sub read_command_line_options {
 
 	my $all_went_well = Getopt::Long::GetOptions ($options,
 		'help|h',
-		'long_help|long-help',
+		'long_help|long-help|longhelp',
 		'verbose|v',
 		'simulate|S',
 		'first_run|first-run|F',
