@@ -118,6 +118,9 @@ Examples:
 Requirements:
   A few perl modules off CPAN are required. If they are missing the program
   will let you know which modules it lacks and suggest a way to install them.
+  Mind that to install them via cpan you will need build-essentials including
+  make and gcc, openssl and libssl-dev.
+
   Also wget is used to download stuff and either mkvmerge or ffmpeg for
   joining video fragments.
 
@@ -353,6 +356,20 @@ sub brag_and_exit {
 
 	print $error_message, $usage, "\n";
 	exit $exit_code;
+}
+
+sub moan_and_carry_on {
+	my $error_message = shift;
+
+	if ($error_message) {
+		chomp $error_message;
+		$error_message =~ s/^/  /gms;
+		$error_message = "Warning:\n$error_message\n\n";
+	} else {
+		$error_message = "Warning:\nSomething just went wrong\n\n";
+	}
+
+	print $error_message;
 }
 
 # Runs before proper options interpreter and tries to establish if user wants to print debug messages
@@ -1202,7 +1219,7 @@ sub get_article {
 }
 
 sub parse_article_timestamp {
-	# TODO: gracefully fail if parsing goes the awy of dodo
+	# TODO: gracefully fail if parsing goes the way of dodo
 	$session->{'article'}->{'timestamp'} = $date_russian->str2time($session->{'article'}->{'date_active_start'} . ' MSK');
 }
 
@@ -1496,7 +1513,7 @@ sub get_wget_error {
 
 sub set_article_file_mtime {
 	my $article_file = shift;
-	brag_and_exit "Can't set article file timestamp: $article_file" 
+	moan_and_carry_on "Can't set article file timestamp: $article_file" 
 		unless utime undef, $session->{'article'}->{'timestamp'}, $article_file;
 }
 
