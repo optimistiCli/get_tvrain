@@ -118,7 +118,7 @@ Examples:
 Requirements:
   A few perl modules off CPAN are required. If they are missing the program
   will let you know which modules it lacks and suggest a way to install them.
-  Mind that to install them via cpan you will need build-essentials including
+  Mind that to install them via cpan you will need build-essential including
   make and gcc, openssl and libssl-dev.
 
   Also wget is used to download stuff and either mkvmerge or ffmpeg for
@@ -1005,9 +1005,7 @@ sub get_show_id {
 
 	if (/^\d+$/) {
 		$session->{'show_id'} = $_;
-	} elsif (/tvrain\.ru.*-(\d+)\/?$/) {
-		$session->{'show_id'} = $1;
-	} elsif (/tvrain\.ru.*\/(\d+)(?:\?\w+=.*)?$/) {
+	} elsif (m%^(?:http(?:s)?://)?[\w\.]*tvrain\.ru/[\w\./\-]*?(\d+)/[^/]*$%) {
 		$session->{'show_id'} = $1;
 	} else {
 		brag_and_exit "Invalid show ID or URL";
