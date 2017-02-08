@@ -1005,7 +1005,7 @@ sub get_show_id {
 
 	if (/^\d+$/) {
 		$session->{'show_id'} = $_;
-	} elsif (m%^(?:http(?:s)?://)?[\w\.]*tvrain\.ru/[\w\./\-]*?(\d+)/[^/]*$%) {
+	} elsif (m%^(?:http(?:s)?://)?[\w\.]*tvrain\.ru/[\w\./\-]*?(\d+)[/\?][^/]*$%) {
 		$session->{'show_id'} = $1;
 	} else {
 		brag_and_exit "Invalid show ID or URL";
